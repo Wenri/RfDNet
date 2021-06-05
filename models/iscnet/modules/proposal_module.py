@@ -7,8 +7,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 from models.registers import MODULES
-from external.pointnet2_ops_lib.pointnet2_ops.pointnet2_modules import  PointnetSAModuleVotes, PointnetFPModule
+from external.pointnet2_ops_lib.pointnet2_ops.pointnet2_modules import PointnetSAModuleVotes, PointnetFPModule
 from external.pointnet2_ops_lib.pointnet2_ops import pointnet2_utils
+
 
 def decode_scores(net, end_points, num_heading_bin, num_size_cluster):
     net_transposed = net.transpose(2, 1)  # (batch_size, 1024, ..)
@@ -25,7 +26,8 @@ def decode_scores(net, end_points, num_heading_bin, num_size_cluster):
     heading_scores = net_transposed[:, :, 5:5 + num_heading_bin]
     heading_residuals_normalized = net_transposed[:, :, 5 + num_heading_bin:5 + num_heading_bin * 2]
     end_points['heading_scores'] = heading_scores  # Bxnum_proposalxnum_heading_bin
-    end_points['heading_residuals_normalized'] = heading_residuals_normalized  # Bxnum_proposalxnum_heading_bin (should be -1 to 1)
+    end_points[
+        'heading_residuals_normalized'] = heading_residuals_normalized  # Bxnum_proposalxnum_heading_bin (should be -1 to 1)
 
     size_scores = net_transposed[:, :, 5 + num_heading_bin * 2:5 + num_heading_bin * 2 + num_size_cluster]
     size_residuals_normalized = net_transposed[:, :,
@@ -41,7 +43,7 @@ def decode_scores(net, end_points, num_heading_bin, num_size_cluster):
 
 @MODULES.register_module
 class ProposalModule(nn.Module):
-    def __init__(self, cfg, optim_spec = None):
+    def __init__(self, cfg, optim_spec=None):
         '''
         Skeleton Extraction Net to obtain partial skeleton from a partial scan (refer to PointNet++).
         :param config: configuration file.
@@ -64,23 +66,23 @@ class ProposalModule(nn.Module):
         '''Modules'''
         # Vote clustering
         self.vote_aggregation = PointnetSAModuleVotes(
-                npoint=self.num_proposal,
-                radius=0.3,
-                nsample=16,
-                mlp=[self.seed_feat_dim, 128, 128, 128],
-                use_xyz=True,
-                normalize_xyz=True
-            )
+            npoint=self.num_proposal,
+            radius=0.3,
+            nsample=16,
+            mlp=[self.seed_feat_dim, 128, 128, 128],
+            use_xyz=True,
+            normalize_xyz=True
+        )
 
         # Object proposal/detection
         # Objectness scores (2), center residual (3),
         # heading class+residual (num_heading_bin*2), size class+residual(num_size_cluster*4)
-        self.conv1 = torch.nn.Conv1d(128,128,1)
-        self.conv2 = torch.nn.Conv1d(128,128,1)
-        self.conv3 = torch.nn.Conv1d(128,2+3+self.num_heading_bin*2+self.num_size_cluster*4+self.num_class,1)
+        self.conv1 = torch.nn.Conv1d(128, 128, 1)
+        self.conv2 = torch.nn.Conv1d(128, 128, 1)
+        self.conv3 = torch.nn.Conv1d(128, 2 + 3 + self.num_heading_bin * 2 + self.num_size_cluster * 4 + self.num_class,
+                                     1)
         self.bn1 = torch.nn.BatchNorm1d(128)
         self.bn2 = torch.nn.BatchNorm1d(128)
-
 
     def forward(self, xyz, features, end_points, export_proposal_feature=False):
         """
@@ -106,15 +108,16 @@ class ProposalModule(nn.Module):
             sample_inds = torch.randint(0, num_seed, (batch_size, self.num_proposal), dtype=torch.int).cuda()
             xyz, features, _ = self.vote_aggregation(xyz, features, sample_inds)
         else:
-            self.cfg.log_string('Unknown sampling strategy: %s. Exiting!'%(self.sampling))
+            self.cfg.log_string('Unknown sampling strategy: %s. Exiting!' % (self.sampling))
             exit()
-        end_points['aggregated_vote_xyz'] = xyz # (batch_size, num_proposal, 3)
-        end_points['aggregated_vote_inds'] = sample_inds # (batch_size, num_proposal,) # should be 0,1,2,...,num_proposal
+        end_points['aggregated_vote_xyz'] = xyz  # (batch_size, num_proposal, 3)
+        end_points[
+            'aggregated_vote_inds'] = sample_inds  # (batch_size, num_proposal,) # should be 0,1,2,...,num_proposal
 
         # --------- PROPOSAL GENERATION ---------
         net = F.relu(self.bn1(self.conv1(features)))
         net = F.relu(self.bn2(self.conv2(net)))
-        net = self.conv3(net) # (batch_size, 2+3+num_heading_bin*2+num_size_cluster*4, num_proposal)
+        net = self.conv3(net)  # (batch_size, 2+3+num_heading_bin*2+num_size_cluster*4, num_proposal)
 
         end_points = decode_scores(net, end_points, self.num_heading_bin, self.num_size_cluster)
 

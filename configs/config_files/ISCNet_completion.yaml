@@ -1,11 +1,11 @@
 method: ISCNet
 resume: False
 finetune: True
-weight: ['out/iscnet/2021-03-28T15:52:57.350715/model_best.pth']
+weight: ['out/iscnet/a_folder_with_detection_module/model_best.pth']
 seed: 10
 device:
   use_gpu: True
-  gpu_ids: '0,1'
+  gpu_ids: '0'
   num_workers: 8
 data:
   dataset: scannet
@@ -64,7 +64,7 @@ train:
   epochs: 240
   phase: 'completion'
   freeze: ['backbone', 'voting', 'detection']
-  batch_size: 8
+  batch_size: 12
 val:
   phase: 'completion'
   batch_size: 8

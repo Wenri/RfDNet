@@ -150,7 +150,7 @@ def parse_predictions(est_data, gt_data, config_dict):
     pred_center = est_data['center']  # B,num_proposal,3
     pred_heading_class = torch.argmax(est_data['heading_scores'], -1)  # B,num_proposal
     heading_residuals = est_data['heading_residuals_normalized'] * (
-                np.pi / config_dict['dataset_config'].num_heading_bin)  # Bxnum_proposalxnum_heading_bin
+            np.pi / config_dict['dataset_config'].num_heading_bin)  # Bxnum_proposalxnum_heading_bin
     pred_heading_residual = torch.gather(heading_residuals, 2,
                                          pred_heading_class.unsqueeze(-1))  # B,num_proposal,1
     pred_heading_residual.squeeze_(2)
@@ -173,9 +173,9 @@ def parse_predictions(est_data, gt_data, config_dict):
     pred_center_upright_camera = flip_axis_to_camera(pred_center.detach().cpu().numpy())
     for i in range(bsize):
         for j in range(num_proposal):
-            heading_angle = config_dict['dataset_config'].class2angle( \
+            heading_angle = config_dict['dataset_config'].class2angle(
                 pred_heading_class[i, j].detach().cpu().numpy(), pred_heading_residual[i, j].detach().cpu().numpy())
-            box_size = config_dict['dataset_config'].class2size( \
+            box_size = config_dict['dataset_config'].class2size(
                 int(pred_size_class[i, j].detach().cpu().numpy()), pred_size_residual[i, j].detach().cpu().numpy())
             corners_3d_upright_camera = get_3d_box(box_size, -heading_angle, pred_center_upright_camera[i, j, :])
             pred_corners_3d_upright_camera[i, j] = corners_3d_upright_camera
@@ -293,7 +293,8 @@ def assembly_pred_map_cls(eval_dict, parsed_predictions, config_dict, mesh_outpu
                 p = Pool(processes=16)
                 cur_list = p.map(partial(batch_load_pred_data, proposal_ids=proposal_ids,
                                          batch_id=i, pred_corners=pred_corners_3d_upright_camera,
-                                         sem_cls_probs=sem_cls_probs, obj_prob=obj_prob, meshes=meshes, voxel_size=voxel_size), sample_idx)
+                                         sem_cls_probs=sem_cls_probs, obj_prob=obj_prob, meshes=meshes,
+                                         voxel_size=voxel_size), sample_idx)
                 p.close()
                 p.join()
 
@@ -380,8 +381,9 @@ def assembly_gt_map_cls(parsed_gts, mesh_outputs=None, voxel_size=0.047):
         shapenet_catids = mesh_outputs['shapenet_catids'][0]
         shapenet_ids = mesh_outputs['shapenet_ids'][0]
         meshes = [
-            trimesh.load(os.path.join(ShapeNetv2_Watertight_Scaled_Simplified_path, shapenet_catid, shapenet_id + '.off'),
-                         process=False) for shapenet_catid, shapenet_id in zip(shapenet_catids, shapenet_ids)]
+            trimesh.load(
+                os.path.join(ShapeNetv2_Watertight_Scaled_Simplified_path, shapenet_catid, shapenet_id + '.off'),
+                process=False) for shapenet_catid, shapenet_id in zip(shapenet_catids, shapenet_ids)]
 
     batch_gt_map_cls = []
     for i in range(bsize):
@@ -393,7 +395,8 @@ def assembly_gt_map_cls(parsed_gts, mesh_outputs=None, voxel_size=0.047):
 
             p = Pool(processes=16)
             temp_list = p.map(partial(batch_load_gt_data, meshes=meshes, gt_corners=gt_corners_3d_upright_camera,
-                                      sem_cls_label=sem_cls_label.cpu().numpy(), batch_id=i, voxel_size=voxel_size), sample_idx)
+                                      sem_cls_label=sem_cls_label.cpu().numpy(), batch_id=i, voxel_size=voxel_size),
+                              sample_idx)
             p.close()
             p.join()
             batch_gt_map_cls.append(temp_list)

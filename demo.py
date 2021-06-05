@@ -47,6 +47,7 @@ def load_demo_data(cfg, device):
             data[key] = data[key].to(device)
     return data
 
+
 def get_proposal_id(cfg, end_points, data, mode='random', batch_sample_ids=None, DUMP_CONF_THRESH=-1.):
     '''
     Get the proposal ids for completion training for the limited GPU RAM.
@@ -63,16 +64,16 @@ def get_proposal_id(cfg, end_points, data, mode='random', batch_sample_ids=None,
         objectness_probs = torch.softmax(end_points['objectness_scores'], dim=2)[..., 1]
 
     for batch_id in range(batch_size):
-
         proposal_to_gt_box_w_cls = torch.arange(0, NUM_PROPOSALS).unsqueeze(-1).to(device).long()
 
-        sample_ids = (objectness_probs[batch_id] > DUMP_CONF_THRESH).cpu().numpy()*batch_sample_ids[batch_id]
+        sample_ids = (objectness_probs[batch_id] > DUMP_CONF_THRESH).cpu().numpy() * batch_sample_ids[batch_id]
         sample_ids = sample_ids.astype(np.bool)
 
         proposal_to_gt_box_w_cls = proposal_to_gt_box_w_cls[sample_ids].long()
         proposal_id_list.append(proposal_to_gt_box_w_cls.unsqueeze(0))
 
     return torch.cat(proposal_id_list, dim=0)
+
 
 def chamfer_dist(obj_points, obj_points_masks, pc_in_box, pc_in_box_masks, centroid_params, orientation_params):
     b_s = obj_points.size(0)
@@ -84,7 +85,8 @@ def chamfer_dist(obj_points, obj_points_masks, pc_in_box, pc_in_box_masks, centr
     axis_rectified[:, 1, 1] = torch.cos(orientation_params)
     obj_points_after = torch.bmm(obj_points, axis_rectified) + centroid_params.unsqueeze(-2)
     dist1, dist2 = chamfer_func(obj_points_after, pc_in_box)
-    return torch.mean(dist2 * pc_in_box_masks)*1e3
+    return torch.mean(dist2 * pc_in_box_masks) * 1e3
+
 
 def fit_mesh_to_scan(cfg, pred_mesh_dict, parsed_predictions, eval_dict, input_scan, dump_threshold):
     '''fit meshes to input scan'''
@@ -110,7 +112,7 @@ def fit_mesh_to_scan(cfg, pred_mesh_dict, parsed_predictions, eval_dict, input_s
             if not (pred_mask[i, j] == 1 and obj_prob[i, j] > dump_threshold):
                 continue
             # get mesh points
-            mesh_data = pred_mesh_dict['meshes'][list(pred_mesh_dict['proposal_ids'][i,:,0]).index(j)]
+            mesh_data = pred_mesh_dict['meshes'][list(pred_mesh_dict['proposal_ids'][i, :, 0]).index(j)]
             obj_points = mesh_data.vertices
             obj_points = obj_points - (obj_points.max(0) + obj_points.min(0)) / 2.
             obj_points = obj_points.dot(transform_shapenet.T)
@@ -134,7 +136,7 @@ def fit_mesh_to_scan(cfg, pred_mesh_dict, parsed_predictions, eval_dict, input_s
             box_params = np.array([*centroid, *sizes, orientation])
 
             # points in larger boxes (remove grounds)
-            larger_box = flip_axis_to_depth(get_3d_box(1.2*sizes, -orientation, flip_axis_to_camera(centroid)))
+            larger_box = flip_axis_to_depth(get_3d_box(1.2 * sizes, -orientation, flip_axis_to_camera(centroid)))
             height = np.percentile(input_scan[i, :, 2], 5)
             scene_scan = input_scan[i, input_scan[i, :, 2] >= height, :3]
             pc_in_box, inds = extract_pc_in_box3d(scene_scan, larger_box)
@@ -181,7 +183,7 @@ def fit_mesh_to_scan(cfg, pred_mesh_dict, parsed_predictions, eval_dict, input_s
     for iter in range(iterations):
         optimizer.zero_grad()
         loss = chamfer_dist(obj_points_list, obj_points_mask_list, pc_in_box_list, pc_in_box_mask_list,
-                                 centroid_params, orientation_params)
+                            centroid_params, orientation_params)
         if loss < best_loss:
             centroid_params_cpu = centroid_params.data.cpu().numpy()
             orientation_params_cpu = orientation_params.data.cpu().numpy()
@@ -191,11 +193,13 @@ def fit_mesh_to_scan(cfg, pred_mesh_dict, parsed_predictions, eval_dict, input_s
 
     for idx in range(box_params_list.shape[0]):
         i, j = index_list[idx]
-        best_box_corners_cam = get_3d_box(box_params_list[idx, 3:6], -orientation_params_cpu[idx], flip_axis_to_camera(centroid_params_cpu[idx]))
+        best_box_corners_cam = get_3d_box(box_params_list[idx, 3:6], -orientation_params_cpu[idx],
+                                          flip_axis_to_camera(centroid_params_cpu[idx]))
         pred_corners_3d_upright_camera[i, j] = best_box_corners_cam
 
     parsed_predictions['pred_corners_3d_upright_camera'] = pred_corners_3d_upright_camera
     return parsed_predictions
+
 
 def generate(cfg, net, data, post_processing):
     with torch.no_grad():
@@ -265,15 +269,17 @@ def generate(cfg, net, data, post_processing):
         gather_ids = BATCH_PROPOSAL_IDs[..., 0].unsqueeze(-1).repeat(1, 1, end_points['sem_cls_scores'].size(2))
         cls_codes_for_completion = torch.gather(end_points['sem_cls_scores'], 1, gather_ids)
         cls_codes_for_completion = (
-                    cls_codes_for_completion >= torch.max(cls_codes_for_completion, dim=2, keepdim=True)[0]).float()
+                cls_codes_for_completion >= torch.max(cls_codes_for_completion, dim=2, keepdim=True)[0]).float()
         cls_codes_for_completion = cls_codes_for_completion.view(batch_size * N_proposals, -1)
 
         meshes = net.completion.generator.generate_mesh(object_input_features, cls_codes_for_completion)
 
     if post_processing:
         pred_mesh_dict = {'meshes': meshes, 'proposal_ids': BATCH_PROPOSAL_IDs}
-        parsed_predictions = fit_mesh_to_scan(cfg, pred_mesh_dict, parsed_predictions, eval_dict, inputs['point_clouds'], dump_threshold)
+        parsed_predictions = fit_mesh_to_scan(cfg, pred_mesh_dict, parsed_predictions, eval_dict,
+                                              inputs['point_clouds'], dump_threshold)
     return end_points, BATCH_PROPOSAL_IDs, eval_dict, meshes, parsed_predictions
+
 
 def save_visualization(cfg, input_data, our_data, output_dir):
     DUMP_CONF_THRESH = cfg.config['generation']['dump_threshold']  # Dump boxes with obj prob larger than that.
@@ -323,8 +329,10 @@ def save_visualization(cfg, input_data, our_data, output_dir):
         if len(box_params) > 0:
             save_path = os.path.join(output_dir, '%06d_pred_confident_nms_bbox.npz' % (batch_id))
             np.savez(save_path,
-                     obbs=box_params[np.logical_and(objectness_prob > DUMP_CONF_THRESH, pred_mask[batch_id, :] == 1), :],
+                     obbs=box_params[np.logical_and(objectness_prob > DUMP_CONF_THRESH, pred_mask[batch_id, :] == 1),
+                          :],
                      proposal_map=BATCH_PROPOSAL_IDs)
+
 
 def visualize(output_dir, offline):
     predicted_boxes = np.load(os.path.join(output_dir, '000000_pred_confident_nms_bbox.npz'))
@@ -352,11 +360,12 @@ def visualize(output_dir, offline):
         orientation = bbox_param[6]
         sizes = bbox_param[3:6]
 
-        obj_points = obj_points - (obj_points.max(0) + obj_points.min(0))/2.
+        obj_points = obj_points - (obj_points.max(0) + obj_points.min(0)) / 2.
         obj_points = obj_points.dot(transform_m.T)
-        obj_points = obj_points.dot(np.diag(1/(obj_points.max(0) - obj_points.min(0)))).dot(np.diag(sizes))
+        obj_points = obj_points.dot(np.diag(1 / (obj_points.max(0) - obj_points.min(0)))).dot(np.diag(sizes))
 
-        axis_rectified = np.array([[np.cos(orientation), np.sin(orientation), 0], [-np.sin(orientation), np.cos(orientation), 0], [0, 0, 1]])
+        axis_rectified = np.array(
+            [[np.cos(orientation), np.sin(orientation), 0], [-np.sin(orientation), np.cos(orientation), 0], [0, 0, 1]])
         obj_points = obj_points.dot(axis_rectified) + center
 
         points_array = numpy_to_vtk(obj_points[..., :3], deep=True)
@@ -364,7 +373,7 @@ def visualize(output_dir, offline):
         ply_reader.Update()
 
         '''draw bboxes'''
-        vectors = np.diag(sizes/2.).dot(axis_rectified)
+        vectors = np.diag(sizes / 2.).dot(axis_rectified)
 
         instance_models.append(ply_reader)
         center_list.append(center)
@@ -375,6 +384,7 @@ def visualize(output_dir, offline):
 
     camera_center = np.array([0, -3, 3])
     scene.visualize(centroid=camera_center, offline=offline, save_path=os.path.join(output_dir, 'pred.png'))
+
 
 def run(cfg):
     '''Begin to run network.'''
@@ -418,6 +428,3 @@ def run(cfg):
 
     save_visualization(cfg, input_data, our_data, output_dir)
     visualize(output_dir, offline=False)
-
-
-
