@@ -9,11 +9,11 @@ from net_utils.nn_distance import nn_distance
 import numpy as np
 from net_utils.ap_helper import parse_predictions, parse_groundtruths, assembly_pred_map_cls, assembly_gt_map_cls
 from external.common import compute_iou
-from net_utils.libs import flip_axis_to_depth, extract_pc_in_box3d, flip_axis_to_camera, flip_axis_to_depth_cuda, \
-    flip_axis_to_camera_cuda, extract_pc_in_box3d_cuda
+from net_utils.libs import flip_axis_to_depth, extract_pc_in_box3d, flip_axis_to_camera
 from torch import optim
 from models.loss import chamfer_func
-from net_utils.box_util import get_3d_box, get_3d_box_cuda
+from net_utils.box_util import get_3d_box
+from net_utils.voxel_util import voxels_from_proposals
 
 
 @METHODS.register_module
@@ -394,7 +394,7 @@ class ISCNet(BaseNetwork):
             input_points_occ_for_completion, \
             cls_codes_for_completion = self.prepare_data(data, BATCH_PROPOSAL_IDs)
 
-            self.prepare_voxel(end_points, data, BATCH_PROPOSAL_IDs)
+            voxels_from_proposals(self.cfg.eval_config['dataset_config'], end_points, data, BATCH_PROPOSAL_IDs)
 
             export_shape = data.get('export_shape', export_shape)  # if output shape voxels.
             batch_size, feat_dim, N_proposals = object_input_features.size()
@@ -498,44 +498,6 @@ class ISCNet(BaseNetwork):
 
         return input_points_for_completion, \
                input_points_occ_for_completion, cls_codes_for_completion
-
-    def prepare_voxel(self, end_points, data, BATCH_PROPOSAL_IDs):
-        device = end_points['center'].device
-        dataset_config = self.cfg.eval_config['dataset_config']
-
-        # gather proposal centers
-        gather_ids = BATCH_PROPOSAL_IDs[..., 0].unsqueeze(-1).repeat(1, 1, 3).long().to(device)
-        pred_centers = torch.gather(end_points['center'], 1, gather_ids)
-        pred_centers_upright_camera = flip_axis_to_camera_cuda(pred_centers)
-
-        # gather proposal orientations
-        pred_heading_class = torch.argmax(end_points['heading_scores'], -1)  # B,num_proposal
-        heading_residuals = end_points['heading_residuals_normalized'] * (
-                np.pi / dataset_config.num_heading_bin)  # Bxnum_proposalxnum_heading_bin
-        pred_heading_residual = torch.gather(heading_residuals, 2,
-                                             pred_heading_class.unsqueeze(-1))  # B,num_proposal,1
-        pred_heading_residual.squeeze_(2)
-        heading_angles = dataset_config.class2angle_cuda(pred_heading_class, pred_heading_residual)
-        heading_angles = torch.gather(heading_angles, 1, BATCH_PROPOSAL_IDs[..., 0])
-
-        # gather proposal box size
-        pred_size_class = torch.argmax(end_points['size_scores'], -1)
-        size_residuals = end_points['size_residuals_normalized'] * torch.from_numpy(
-            dataset_config.mean_size_arr.astype(np.float32)).cuda().unsqueeze(0).unsqueeze(0)
-        pred_size_residual = torch.gather(size_residuals, 2,
-                                          pred_size_class.unsqueeze(-1).unsqueeze(-1).repeat(1, 1, 1, 3))
-        pred_size_residual.squeeze_(2)
-        box_size = dataset_config.class2size_cuda(pred_size_class, pred_size_residual)
-        box_size = torch.gather(box_size, 1, gather_ids)
-
-        corners_3d_upright_camera = get_3d_box_cuda(box_size, -heading_angles, pred_centers_upright_camera)
-        box3d = flip_axis_to_depth_cuda(corners_3d_upright_camera)
-
-        pcs = []
-        for pc, box3d in zip(data['point_clouds'].cpu().numpy()[..., 0:3], box3d.detach().cpu().numpy()):
-            pcs.append([extract_pc_in_box3d(pc, a) for a in box3d])
-
-        return pcs
 
     def loss(self, est_data, gt_data):
         '''
