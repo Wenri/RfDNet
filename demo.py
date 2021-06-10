@@ -16,8 +16,8 @@ from net_utils.box_util import get_3d_box
 from torch import optim
 from models.loss import chamfer_func
 import os
-import vtk
-from vtk.util.numpy_support import vtk_to_numpy, numpy_to_vtk
+import vtkmodules.all as vtk
+from vtkmodules.util.numpy_support import vtk_to_numpy, numpy_to_vtk
 from utils.scannet.visualization.vis_for_demo import Vis_base
 
 

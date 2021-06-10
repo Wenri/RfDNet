@@ -6,13 +6,20 @@ from net_utils.box_util import get_3d_box_cuda
 from net_utils.libs import flip_axis_to_camera_cuda, flip_axis_to_depth_cuda, extract_pc_in_box3d
 
 
-def voxels_from_point_cloud(pcd, centre, voxel_size=0.05):
-    pcd = o3d.geometry.PointCloud(o3d.utility.Vector3dVector(pcd))
+def voxels_from_point_cloud(pcd, centroid, orientation, sizes, voxel_size=0.05):
+    transform_m = np.array([[0, 0, -1], [-1, 0, 0], [0, 1, 0]])
+
+    axis_rectified = np.array(
+        [[np.cos(orientation), np.sin(orientation), 0], [-np.sin(orientation), np.cos(orientation), 0], [0, 0, 1]])
+    pcd = np.linalg.solve(axis_rectified.dot(np.diag(sizes).dot(transform_m)).T, (pcd - centroid).T)
+
     min_bound = centre - 1
     max_bound = centre + 1
     min_bound.resize([3, 1])
     max_bound.resize([3, 1])
-    voxel_grid = o3d.geometry.VoxelGrid. create_from_point_cloud_within_bounds(pcd, voxel_size, min_bound, max_bound)
+
+    pcd = o3d.geometry.PointCloud(o3d.utility.Vector3dVector(pcd))
+    voxel_grid = o3d.geometry.VoxelGrid.create_from_point_cloud_within_bounds(pcd, voxel_size, min_bound, max_bound)
     return voxel_grid
 
 
@@ -47,14 +54,19 @@ def voxels_from_proposals(dataset_config, end_points, data, BATCH_PROPOSAL_IDs):
     corners_3d_upright_camera = get_3d_box_cuda(box_size, -heading_angles, pred_centers_upright_camera)
     box3d = flip_axis_to_depth_cuda(corners_3d_upright_camera)
 
-    for pcs, boxes3d, centers in zip(data['point_clouds'].cpu().numpy()[..., 0:3], box3d.detach().cpu().numpy(),
-                                     pred_centers.detach().cpu().numpy()):
-        for box3d, centre in zip(boxes3d, centers):
+    for pcs, boxes3d, centroid, orientation, sizes in zip(data['point_clouds'][..., 0:3].cpu().numpy(),
+                                                          box3d.detach().cpu().numpy(),
+                                                          pred_centers.detach().cpu().numpy(),
+                                                          heading_angles.detach().cpu().numpy(),
+                                                          box_size.detach().cpu().numpy()):
+
+        for box3d, bb_center, bb_orientation, bb_size in zip(boxes3d, centroid, orientation, sizes):
             pcd, ids = extract_pc_in_box3d(pcs, box3d)
-            voxels = voxels_from_point_cloud(pcd.astype(np.float64), centre.astype(np.float64))
-            voxels = np.stack([a.grid_index for a in voxels.get_voxels()])
-            states_max = np.max(voxels, axis=0)
-            states_min = np.min(voxels, axis=0)
-            print(states_min, states_max)
+            voxels = voxels_from_point_cloud(pcd.astype(np.float64), bb_center, bb_orientation, bb_size)
+            # voxels.get_voxels() could be empty
+            # voxels = np.stack([a.grid_index for a in voxels.get_voxels()])
+            # states_max = np.max(voxels, axis=0)
+            # states_min = np.min(voxels, axis=0)
+            # print(states_min, states_max)
 
     return voxels

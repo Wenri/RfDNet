@@ -140,7 +140,7 @@ class ISCNet(BaseNetwork):
                 # proposal_to_gt_box_w_cls_list (B x N_Limit x 4): (bool_mask, proposal_id, gt_box_id, cls_id)
                 input_points_for_completion, \
                 input_points_occ_for_completion, \
-                _ = self.prepare_data(data, BATCH_PROPOSAL_IDs)
+                _ = self.prepare_data(end_points, data, BATCH_PROPOSAL_IDs)
 
                 batch_size, feat_dim, N_proposals = object_input_features.size()
                 object_input_features = object_input_features.transpose(1, 2).contiguous().view(
@@ -392,9 +392,7 @@ class ISCNet(BaseNetwork):
             # proposal_to_gt_box_w_cls_list (B x N_Limit x 4): (bool_mask, proposal_id, gt_box_id, cls_id)
             input_points_for_completion, \
             input_points_occ_for_completion, \
-            cls_codes_for_completion = self.prepare_data(data, BATCH_PROPOSAL_IDs)
-
-            voxels_from_proposals(self.cfg.eval_config['dataset_config'], end_points, data, BATCH_PROPOSAL_IDs)
+            cls_codes_for_completion = self.prepare_data(end_points, data, BATCH_PROPOSAL_IDs)
 
             export_shape = data.get('export_shape', export_shape)  # if output shape voxels.
             batch_size, feat_dim, N_proposals = object_input_features.size()
@@ -464,7 +462,7 @@ class ISCNet(BaseNetwork):
 
         return torch.cat(proposal_id_list, dim=0)
 
-    def prepare_data(self, data, BATCH_PROPOSAL_IDs):
+    def prepare_data(self, end_points, data, BATCH_PROPOSAL_IDs):
         '''
         Select those proposals that have a corresponding gt object shape (to the gt boxes.)
         :param data: data source which contains gt contents.
@@ -495,6 +493,8 @@ class ISCNet(BaseNetwork):
             cls_codes_for_completion.append(cls_codes)
 
         cls_codes_for_completion = torch.cat(cls_codes_for_completion, dim=0)
+
+        voxels = voxels_from_proposals(self.cfg.eval_config['dataset_config'], end_points, data, BATCH_PROPOSAL_IDs)
 
         return input_points_for_completion, \
                input_points_occ_for_completion, cls_codes_for_completion
