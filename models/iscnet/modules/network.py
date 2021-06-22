@@ -9,7 +9,7 @@ from net_utils.nn_distance import nn_distance
 import numpy as np
 from net_utils.ap_helper import parse_predictions, parse_groundtruths, assembly_pred_map_cls, assembly_gt_map_cls
 from external.common import compute_iou
-from net_utils.libs import flip_axis_to_depth, extract_pc_in_box3d, flip_axis_to_camera
+from net_utils.libs import flip_axis_to_depth, extract_pc_in_box3d, flip_axis_to_camera, flip_axis_to_depth_cuda
 from torch import optim
 from models.loss import chamfer_func
 from net_utils.box_util import get_3d_box
@@ -140,7 +140,7 @@ class ISCNet(BaseNetwork):
                 # proposal_to_gt_box_w_cls_list (B x N_Limit x 4): (bool_mask, proposal_id, gt_box_id, cls_id)
                 input_points_for_completion, \
                 input_points_occ_for_completion, \
-                _ = self.prepare_data(data, BATCH_PROPOSAL_IDs)
+                _ = self.prepare_data(end_points, data, BATCH_PROPOSAL_IDs)
 
                 batch_size, feat_dim, N_proposals = object_input_features.size()
                 object_input_features = object_input_features.transpose(1, 2).contiguous().view(
@@ -392,9 +392,7 @@ class ISCNet(BaseNetwork):
             # proposal_to_gt_box_w_cls_list (B x N_Limit x 4): (bool_mask, proposal_id, gt_box_id, cls_id)
             input_points_for_completion, \
             input_points_occ_for_completion, \
-            cls_codes_for_completion = self.prepare_data(data, BATCH_PROPOSAL_IDs)
-
-            voxels_from_proposals(self.cfg.eval_config['dataset_config'], end_points, data, BATCH_PROPOSAL_IDs)
+            cls_codes_for_completion = self.prepare_data(end_points, data, BATCH_PROPOSAL_IDs)
 
             export_shape = data.get('export_shape', export_shape)  # if output shape voxels.
             batch_size, feat_dim, N_proposals = object_input_features.size()
@@ -414,12 +412,12 @@ class ISCNet(BaseNetwork):
         return end_points, completion_loss.unsqueeze(0), shape_example, BATCH_PROPOSAL_IDs
 
     def get_proposal_id(self, end_points, data, mode='random', batch_sample_ids=None, DUMP_CONF_THRESH=-1.):
-        '''
+        """
         Get the proposal ids for completion training for the limited GPU RAM.
         :param end_points: estimated data from votenet.
         :param data: data source which contains gt contents.
         :return:
-        '''
+        """
         batch_size, MAX_NUM_OBJ = data['box_label_mask'].shape
         device = end_points['center'].device
         NUM_PROPOSALS = end_points['center'].size(1)
@@ -464,27 +462,24 @@ class ISCNet(BaseNetwork):
 
         return torch.cat(proposal_id_list, dim=0)
 
-    def prepare_data(self, data, BATCH_PROPOSAL_IDs):
-        '''
+    def prepare_data(self, end_points, data, BATCH_PROPOSAL_IDs):
+        """
         Select those proposals that have a corresponding gt object shape (to the gt boxes.)
         :param data: data source which contains gt contents.
         :param BATCH_PROPOSAL_IDs: mapping list from proposal ids to gt box ids.
         :return:
-        '''
+        """
         batch_size, n_objects, n_points, point_dim = data['object_points'].size()
         N_proposals = BATCH_PROPOSAL_IDs.size(1)
 
         object_ids = BATCH_PROPOSAL_IDs[:, :, 1].unsqueeze(-1).unsqueeze(-1).expand(batch_size, N_proposals,
                                                                                     n_points, point_dim)
         input_points_for_completion = torch.gather(data['object_points'], 1, object_ids)
-        input_points_for_completion = input_points_for_completion.view(batch_size * N_proposals,
-                                                                       n_points,
-                                                                       point_dim)
+        input_points_for_completion = input_points_for_completion.view(batch_size * N_proposals, n_points, point_dim)
 
         occ_ids = BATCH_PROPOSAL_IDs[:, :, 1].unsqueeze(-1).expand(batch_size, N_proposals, n_points)
         input_points_occ_for_completion = torch.gather(data['object_points_occ'], 1, occ_ids)
-        input_points_occ_for_completion = input_points_occ_for_completion.view(batch_size * N_proposals,
-                                                                               n_points)
+        input_points_occ_for_completion = input_points_occ_for_completion.view(batch_size * N_proposals, n_points)
 
         cls_codes_for_completion = []
         for batch_id in range(batch_size):
@@ -495,6 +490,17 @@ class ISCNet(BaseNetwork):
             cls_codes_for_completion.append(cls_codes)
 
         cls_codes_for_completion = torch.cat(cls_codes_for_completion, dim=0)
+
+        surface_points = input_points_occ_for_completion.unsqueeze(-1) * input_points_for_completion
+        max_dim, min_dim = torch.max(surface_points, dim=1).values, torch.min(surface_points, dim=1).values
+        center = (max_dim + min_dim) / 2
+        scale = max_dim - min_dim
+
+        box_size = voxels_from_proposals(self.cfg.eval_config['dataset_config'], end_points, data, BATCH_PROPOSAL_IDs)
+        box_size = torch.abs(flip_axis_to_depth_cuda(box_size.view(batch_size * N_proposals, 3)))
+
+        rescale = box_size / scale / torch.max(box_size, dim=-1).values.unsqueeze(1)
+        input_points_for_completion = (input_points_for_completion - center.unsqueeze(1)) * rescale.unsqueeze(1)
 
         return input_points_for_completion, \
                input_points_occ_for_completion, cls_codes_for_completion
