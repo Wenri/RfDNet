@@ -495,12 +495,13 @@ class ISCNet(BaseNetwork):
         max_dim, min_dim = torch.max(surface_points, dim=1).values, torch.min(surface_points, dim=1).values
         center = (max_dim + min_dim) / 2
         scale = max_dim - min_dim
+        input_points_for_completion = (input_points_for_completion - center.unsqueeze(1)) / scale.unsqueeze(1)
 
-        box_size = voxels_from_proposals(self.cfg.eval_config['dataset_config'], end_points, data, BATCH_PROPOSAL_IDs)
-        box_size = torch.abs(flip_axis_to_depth_cuda(box_size.view(batch_size * N_proposals, 3)))
+        # box_size = voxels_from_proposals(self.cfg.eval_config['dataset_config'], end_points, data, BATCH_PROPOSAL_IDs)
+        # box_size = torch.abs(flip_axis_to_depth_cuda(box_size.view(batch_size * N_proposals, 3)))
 
-        rescale = box_size / scale / torch.max(box_size, dim=-1).values.unsqueeze(1)
-        input_points_for_completion = (input_points_for_completion - center.unsqueeze(1)) * rescale.unsqueeze(1)
+        # rescale = box_size / scale / torch.max(box_size, dim=-1).values.unsqueeze(1)
+        # input_points_for_completion = (input_points_for_completion - center.unsqueeze(1)) * rescale.unsqueeze(1)
 
         return input_points_for_completion, \
                input_points_occ_for_completion, cls_codes_for_completion
