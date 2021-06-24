@@ -1,7 +1,7 @@
 method: ISCNet
 resume: False
 finetune: True
-weight: ['out/iscnet/a_folder_with_detection_module/model_best.pth']
+weight: ['out/iscnet/pre_train_ISCNet_detection/model_best.pth']
 seed: 10
 device:
   use_gpu: True

@@ -360,9 +360,10 @@ def visualize(output_dir, offline):
         orientation = bbox_param[6]
         sizes = bbox_param[3:6]
 
-        obj_points = obj_points - (obj_points.max(0) + obj_points.min(0)) / 2.
+#        obj_points = obj_points - (obj_points.max(0) + obj_points.min(0)) / 2.
         obj_points = obj_points.dot(transform_m.T)
-        obj_points = obj_points.dot(np.diag(1 / (obj_points.max(0) - obj_points.min(0)))).dot(np.diag(sizes))
+#        obj_points = obj_points.dot(np.diag(1 / (obj_points.max(0) - obj_points.min(0)))).dot(np.diag(sizes))
+        obj_points = obj_points.dot(np.diag(sizes))
 
         axis_rectified = np.array(
             [[np.cos(orientation), np.sin(orientation), 0], [-np.sin(orientation), np.cos(orientation), 0], [0, 0, 1]])
