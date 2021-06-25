@@ -149,26 +149,14 @@ def extract_pc_in_box3d(pc, box3d):
 
 
 def extract_pc_in_box3d_cuda(pointclouds, boxes3d):
-    ''' pc: (N,3), box3d: (8,3) '''
-    boxes3d_flatten = torch.cat([torch.min(boxes3d, dim=2)[0], torch.max(boxes3d, dim=2)[0]], dim=-1)
-    b_size = boxes3d.size(0)
-    masks = []
-    for b_id in range(b_size):
-        box3d = boxes3d_flatten[b_id]
-        pc = pointclouds[b_id]
-        pc = pc.unsqueeze(1).expand(pc.size(0), box3d.size(0), pc.size(1))
+    """ pc: (N,3), box3d: (8,3) """
+    boxes3d_flatten_min = torch.min(boxes3d, dim=2).values.unsqueeze(2)
+    boxes3d_flatten_max = torch.max(boxes3d, dim=2).values.unsqueeze(2)
 
-        c1 = pc[:, :, 0] <= box3d[:, 3]
-        c2 = pc[:, :, 0] >= box3d[:, 0]
-        c3 = pc[:, :, 1] <= box3d[:, 4]
-        c4 = pc[:, :, 1] >= box3d[:, 1]
-        c5 = pc[:, :, 2] <= box3d[:, 5]
-        c6 = pc[:, :, 2] >= box3d[:, 2]
+    m1 = torch.all(pointclouds >= boxes3d_flatten_min, -1)
+    m2 = torch.all(pointclouds <= boxes3d_flatten_max, -1)
 
-        mask = c1 + c2 + c3 + c4 + c5 + c6
-        masks.append((mask == 6).unsqueeze(0))
-
-    return torch.cat(masks, dim=0).transpose(1, 2)
+    return torch.logical_and(m1, m2)
 
 
 def sample_points(box_point_masks, num_points):
@@ -207,7 +195,7 @@ def extract_points(data, pred_center, candidate_pred_box_masks, box_point_masks,
 
             # obtain ground_truth points for each object_id
             gt_instance_point_ids = (
-                        data['gt_instance_labels'][batch_id] == data['box_instance_labels'][batch_id][obj_id]).astype(
+                    data['gt_instance_labels'][batch_id] == data['box_instance_labels'][batch_id][obj_id]).astype(
                 np.uint8)
             gt_points = data['gt_point_clouds'][batch_id, gt_instance_point_ids]
 

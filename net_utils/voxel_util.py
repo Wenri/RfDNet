@@ -1,14 +1,17 @@
+import itertools
+
 import open3d as o3d
 import numpy as np
 import torch
 
-from net_utils.box_util import get_3d_box_cuda
-from net_utils.libs import flip_axis_to_camera_cuda, flip_axis_to_depth_cuda, extract_pc_in_box3d
+from net_utils.box_util import get_3d_box_cuda, roty_cuda
+from net_utils.libs import flip_axis_to_camera_cuda, flip_axis_to_depth_cuda, extract_pc_in_box3d, \
+    extract_pc_in_box3d_cuda
 
 
 def voxels_from_point_cloud(pcd, centroid, orientation, sizes, voxel_size=1 / 32):
-    transform_m = np.array([[0, 0, -1], [-1, 0, 0], [0, 1, 0]])
-    transform_m = np.matmul(transform_m.T, np.diag(sizes))
+    # transform_m = np.array([[0, 0, -1], [-1, 0, 0], [0, 1, 0]])
+    transform_m = np.diag(sizes)
 
     axis_rectified = np.array(
         [[np.cos(orientation), np.sin(orientation), 0], [-np.sin(orientation), np.cos(orientation), 0], [0, 0, 1]])
@@ -69,9 +72,11 @@ def generate_voxel(pcs, box3d, bb_center, bb_orientation, bb_size):
     return torch.from_numpy(voxels)
 
 
-def voxels_from_proposals(cfg, end_points, data, BATCH_PROPOSAL_IDs):
+def voxels_from_proposals(cfg, end_points, data, BATCH_PROPOSAL_IDs, voxel_size=1 / 32):
     device = end_points['center'].device
     dataset_config = cfg.eval_config['dataset_config']
+    batch_size = BATCH_PROPOSAL_IDs.size(0)
+    N_proposals = BATCH_PROPOSAL_IDs.size(1)
 
     pred_heading_class = torch.argmax(end_points['heading_scores'], -1)  # B,num_proposal
     heading_residuals = end_points['heading_residuals_normalized'] * (
@@ -90,7 +95,39 @@ def voxels_from_proposals(cfg, end_points, data, BATCH_PROPOSAL_IDs):
     gather_param_p = (end_points['center'], pred_heading_class, pred_heading_residual,
                       pred_size_class, pred_size_residual)
 
-    bbox_param = gather_bbox(dataset_config, gather_ids_p, *gather_param_p)
+    box3d, box_size, pred_centers, heading_angles = gather_bbox(dataset_config, gather_ids_p, *gather_param_p)
+    # all_voxels_check = [generate_voxel(*a) for a in
+    #                     unpack_data(data['point_clouds'][..., 0:3], box3d, box_size, pred_centers, heading_angles)]
+    # all_voxels_check = torch.stack(all_voxels_check).to(device)
 
-    all_voxels = [generate_voxel(*a) for a in unpack_data(data['point_clouds'][..., 0:3], *bbox_param)]
-    return torch.stack(all_voxels).to(device)
+    transform_m = torch.tensor([[0, 0, -1], [-1, 0, 0], [0, 1, 0]], dtype=torch.float32, device=heading_angles.device)
+    axis_rectified = transform_m @ roty_cuda(heading_angles) @ transform_m.T
+
+    point_clouds = data['point_clouds'][..., 0:3].unsqueeze(1).expand(-1, N_proposals, -1, -1)
+    point_clouds = point_clouds - pred_centers.unsqueeze(2)
+    point_clouds = torch.matmul(point_clouds, axis_rectified)
+    box3d = box3d - pred_centers.unsqueeze(2)
+    box3d = torch.matmul(box3d, axis_rectified)
+
+    masks = extract_pc_in_box3d_cuda(point_clouds, box3d)
+    min_bound = np.full(3, -0.5, dtype=np.float32)
+    max_bound = np.full(3, 0.5, dtype=np.float32)
+
+    all_voxels = torch.zeros(batch_size, N_proposals, 32, 32, 32, device=device)
+
+    for i, j in itertools.product(range(batch_size), range(N_proposals)):
+        pcd = point_clouds[i, j]
+        pcd = pcd[masks[i, j]] / box_size[i, j]
+        pcd = o3d.geometry.PointCloud(o3d.utility.Vector3dVector(pcd.cpu().numpy()))
+        voxel_grid = o3d.geometry.VoxelGrid.create_from_point_cloud_within_bounds(pcd, voxel_size, min_bound, max_bound)
+        voxel_list = voxel_grid.get_voxels()
+
+        if voxel_list:
+            voxel_index = np.stack([a.grid_index for a in voxel_list])
+            voxel_index = np.clip(voxel_index, 0, 31)
+            all_voxels[i, j, voxel_index[:, 0], voxel_index[:, 1], voxel_index[:, 2]] = 1.
+
+    all_voxels = all_voxels.view(batch_size * N_proposals, 32, 32, 32)
+    # check_p1 = torch.count_nonzero((all_voxels - all_voxels_check) == 1)
+    # check_n1 = torch.count_nonzero((all_voxels - all_voxels_check) == -1)
+    return all_voxels
