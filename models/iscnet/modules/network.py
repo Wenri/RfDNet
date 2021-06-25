@@ -390,9 +390,8 @@ class ISCNet(BaseNetwork):
 
             # Prepare input-output pairs for shape completion
             # proposal_to_gt_box_w_cls_list (B x N_Limit x 4): (bool_mask, proposal_id, gt_box_id, cls_id)
-            input_points_for_completion, \
-            input_points_occ_for_completion, \
-            cls_codes_for_completion = self.prepare_data(end_points, data, BATCH_PROPOSAL_IDs)
+            input_points_for_completion, input_points_occ_for_completion, \
+            cls_codes_for_completion, voxels = self.prepare_data(end_points, data, BATCH_PROPOSAL_IDs)
 
             export_shape = data.get('export_shape', export_shape)  # if output shape voxels.
             batch_size, feat_dim, N_proposals = object_input_features.size()
@@ -401,7 +400,8 @@ class ISCNet(BaseNetwork):
             completion_loss, shape_example = self.completion.compute_loss(object_input_features,
                                                                           input_points_for_completion,
                                                                           input_points_occ_for_completion,
-                                                                          cls_codes_for_completion, export_shape)
+                                                                          cls_codes_for_completion, voxels,
+                                                                          export_shape)
         else:
             BATCH_PROPOSAL_IDs = None
             completion_loss = torch.tensor(0.).to(features.device)
@@ -497,14 +497,9 @@ class ISCNet(BaseNetwork):
         scale = max_dim - min_dim
         input_points_for_completion = (input_points_for_completion - center.unsqueeze(1)) / scale.unsqueeze(1)
 
-        # box_size = voxels_from_proposals(self.cfg.eval_config['dataset_config'], end_points, data, BATCH_PROPOSAL_IDs)
-        # box_size = torch.abs(flip_axis_to_depth_cuda(box_size.view(batch_size * N_proposals, 3)))
+        voxels = voxels_from_proposals(self.cfg, end_points, data, BATCH_PROPOSAL_IDs)
 
-        # rescale = box_size / scale / torch.max(box_size, dim=-1).values.unsqueeze(1)
-        # input_points_for_completion = (input_points_for_completion - center.unsqueeze(1)) * rescale.unsqueeze(1)
-
-        return input_points_for_completion, \
-               input_points_occ_for_completion, cls_codes_for_completion
+        return input_points_for_completion, input_points_occ_for_completion, cls_codes_for_completion, voxels
 
     def loss(self, est_data, gt_data):
         '''

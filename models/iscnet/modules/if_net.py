@@ -20,7 +20,7 @@ class IFNet(nn.Module):
         dim = 3
         self.use_cls_for_completion = cfg.config['data']['use_cls_for_completion']
         if not cfg.config['data']['skip_propagate']:
-            self.c_dim = self.use_cls_for_completion*cfg.dataset_config.num_class + 128
+            self.c_dim = self.use_cls_for_completion * cfg.dataset_config.num_class + 128
         else:
             self.c_dim = self.use_cls_for_completion * cfg.dataset_config.num_class + cfg.config['data']['c_dim']
         self.threshold = cfg.config['data']['threshold']
@@ -41,7 +41,7 @@ class IFNet(nn.Module):
                                          sample=cfg.config['generation']['use_sampling'],
                                          refinement_step=cfg.config['generation']['refinement_step'],
                                          simplify_nfaces=cfg.config['generation']['simplify_nfaces'],
-                                         preprocessor = None)
+                                         preprocessor=None)
 
         # 128**3 res input
         self.conv_in = nn.Conv3d(1, 16, 3, padding=1, padding_mode='replicate')
@@ -88,7 +88,7 @@ class IFNet(nn.Module):
                 input[x] = y * displacment
                 displacments.append(input)
 
-        self.displacments = torch.Tensor(displacments).cuda()
+        self.displacments = torch.Tensor(displacments)
 
     def forward(self, p, z, c, x=None):
         net = self.fc_p(p.transpose(1, 2))
@@ -106,9 +106,9 @@ class IFNet(nn.Module):
         if x is not None:
             x = x.unsqueeze(1)
 
-            p_features = p.transpose(1, -1)
+            p_features = features
             p = p.unsqueeze(1).unsqueeze(1)
-            p = torch.cat([p + d for d in self.displacments], dim=2)  # (B,1,7,num_samples,3)
+            p = torch.cat([p + d for d in self.displacments.to(p.device)], dim=2)  # (B,1,7,num_samples,3)
             feature_0 = F.grid_sample(x, p, padding_mode='border')  # out : (B,C (of x), 1,1,sample_num)
 
             net = self.actvn(self.conv_in(x))
@@ -144,9 +144,8 @@ class IFNet(nn.Module):
             features = torch.cat((feature_0, feature_1, feature_2, feature_3, feature_4, feature_5),
                                  dim=1)  # (B, features, 1,7,sample_num)
             shape = features.shape
-            features = torch.reshape(features,
-                                     (shape[0], shape[1] * shape[3], shape[4]))  # (B, featues_per_sample, samples_num)
-            # features = torch.cat((features, p_features), dim=1)  # (B, featue_size, samples_num)
+            features = features.view(shape[0], shape[1] * shape[3], shape[4])  # (B, featues_per_sample, samples_num)
+            features = features + p_features  # (B, featue_size, samples_num)
 
         net = self.actvn(self.fc_0(features))
         net = self.actvn(self.fc_1(net))
@@ -157,7 +156,7 @@ class IFNet(nn.Module):
         return out
 
     def compute_loss(self, input_features_for_completion, input_points_for_completion, input_points_occ_for_completion,
-                     cls_codes_for_completion, export_shape=False):
+                     cls_codes_for_completion, voxel_grids, export_shape=False):
         '''
         Compute loss for OccNet
         :param input_features_for_completion (N_B x D): Number of bounding boxes x Dimension of proposal feature.
@@ -176,7 +175,8 @@ class IFNet(nn.Module):
         kwargs = {}
         '''Infer latent code z.'''
         if self.z_dim > 0:
-            q_z = self.infer_z(input_points_for_completion, input_points_occ_for_completion, input_features_for_completion, device, **kwargs)
+            q_z = self.infer_z(input_points_for_completion, input_points_occ_for_completion,
+                               input_features_for_completion, device, **kwargs)
             z = q_z.rsample()
             # KL-divergence
             p0_z = self.get_prior_z(self.z_dim, device)
@@ -187,7 +187,7 @@ class IFNet(nn.Module):
             loss = 0.
 
         '''Decode to occupancy voxels.'''
-        logits = self(input_points_for_completion, z, input_features_for_completion)
+        logits = self(input_points_for_completion, z, input_features_for_completion, voxel_grids)
         loss_i = F.binary_cross_entropy_with_logits(
             logits, input_points_occ_for_completion, reduction='none')
         loss = loss + loss_i.sum(-1).mean()
@@ -195,7 +195,7 @@ class IFNet(nn.Module):
         '''Export Shape Voxels.'''
         if export_shape:
             shape = (16, 16, 16)
-            p = make_3d_grid([-0.5 + 1/32] * 3, [0.5 - 1/32] * 3, shape).to(device)
+            p = make_3d_grid([-0.5 + 1 / 32] * 3, [0.5 - 1 / 32] * 3, shape).to(device)
             p = p.expand(batch_size, *p.size())
             z = self.get_z_from_prior((batch_size,), device, sample=False)
             kwargs = {}

@@ -6,21 +6,30 @@ from net_utils.box_util import get_3d_box_cuda
 from net_utils.libs import flip_axis_to_camera_cuda, flip_axis_to_depth_cuda, extract_pc_in_box3d
 
 
-def voxels_from_point_cloud(pcd, centroid, orientation, sizes, voxel_size=0.05):
+def voxels_from_point_cloud(pcd, centroid, orientation, sizes, voxel_size=1 / 32):
     transform_m = np.array([[0, 0, -1], [-1, 0, 0], [0, 1, 0]])
+    transform_m = np.matmul(transform_m.T, np.diag(sizes))
 
     axis_rectified = np.array(
         [[np.cos(orientation), np.sin(orientation), 0], [-np.sin(orientation), np.cos(orientation), 0], [0, 0, 1]])
-    pcd = np.linalg.solve(axis_rectified.dot(np.diag(sizes).dot(transform_m)).T, (pcd - centroid).T)
+    transform_m = np.matmul(transform_m, axis_rectified)
 
-    min_bound = centroid - 1
-    max_bound = centroid + 1
-    min_bound.resize([3, 1])
-    max_bound.resize([3, 1])
+    pcd = np.linalg.solve(transform_m.T, (pcd - centroid).T)
+
+    min_bound = np.ones_like(centroid) * -0.5
+    max_bound = np.ones_like(centroid) * 0.5
 
     pcd = o3d.geometry.PointCloud(o3d.utility.Vector3dVector(pcd.T))
     voxel_grid = o3d.geometry.VoxelGrid.create_from_point_cloud_within_bounds(pcd, voxel_size, min_bound, max_bound)
-    return voxel_grid
+    voxel_list = voxel_grid.get_voxels()
+    voxels = np.zeros((32, 32, 32), dtype=np.float32)
+
+    if voxel_list:
+        voxel_index = np.stack([a.grid_index for a in voxel_list])
+        voxel_index = np.clip(voxel_index, 0, 31)
+        voxels[voxel_index[:, 0], voxel_index[:, 1], voxel_index[:, 2]] = 1.
+
+    return voxels
 
 
 def gather_bbox(dataset_config, gather_ids, center, heading_class, heading_residual, size_class, size_residual):
@@ -44,8 +53,25 @@ def gather_bbox(dataset_config, gather_ids, center, heading_class, heading_resid
     return box3d, box_size, pred_centers, heading_angles
 
 
-def voxels_from_proposals(dataset_config, end_points, data, BATCH_PROPOSAL_IDs):
+def unpack_data(point_clouds, box3d, box_size, pred_centers, heading_angles):
+    for pcs, boxes3d, centroid, orientation, sizes in zip(point_clouds.cpu().numpy(),
+                                                          box3d.detach().cpu().numpy(),
+                                                          pred_centers.detach().cpu().numpy(),
+                                                          heading_angles.detach().cpu().numpy(),
+                                                          box_size.detach().cpu().numpy()):
+        for box3d, bb_center, bb_orientation, bb_size in zip(boxes3d, centroid, orientation, sizes):
+            yield pcs, box3d, bb_center, bb_orientation, bb_size
+
+
+def generate_voxel(pcs, box3d, bb_center, bb_orientation, bb_size):
+    pcd, ids = extract_pc_in_box3d(pcs, box3d)
+    voxels = voxels_from_point_cloud(pcd.astype(np.float64), bb_center, bb_orientation, bb_size)
+    return torch.from_numpy(voxels)
+
+
+def voxels_from_proposals(cfg, end_points, data, BATCH_PROPOSAL_IDs):
     device = end_points['center'].device
+    dataset_config = cfg.eval_config['dataset_config']
 
     pred_heading_class = torch.argmax(end_points['heading_scores'], -1)  # B,num_proposal
     heading_residuals = end_points['heading_residuals_normalized'] * (
@@ -61,36 +87,10 @@ def voxels_from_proposals(dataset_config, end_points, data, BATCH_PROPOSAL_IDs):
     pred_size_residual.squeeze_(2)
 
     gather_ids_p = BATCH_PROPOSAL_IDs[..., 0].long().to(device)
-    gather_param_p = [end_points['center'], pred_heading_class, pred_heading_residual,
-                      pred_size_class, pred_size_residual]
+    gather_param_p = (end_points['center'], pred_heading_class, pred_heading_residual,
+                      pred_size_class, pred_size_residual)
 
-    gather_ids_g = BATCH_PROPOSAL_IDs[..., 1].long().to(device)
-    gather_param_g = [data[k] for k in ('center_label', 'heading_class_label', 'heading_residual_label',
-                                        'size_class_label', 'size_residual_label')]
-    box3d_p, box_size_p, centers_p, heading_angles_p = gather_bbox(dataset_config, gather_ids_p, *gather_param_p)
-    box3d_g, box_size_g, centers_g, heading_angles_g = gather_bbox(dataset_config, gather_ids_g, *gather_param_g)
+    bbox_param = gather_bbox(dataset_config, gather_ids_p, *gather_param_p)
 
-    # axis_rectified = np.array(
-    #     [[np.cos(orientation), np.sin(orientation), 0], [-np.sin(orientation), np.cos(orientation), 0], [0, 0, 1]])
-    cos_orientation_g, sin_orientation_g = torch.cos(heading_angles_g), torch.sin(heading_angles_g)
-    zero_orientation, one_orientation = torch.zeros_like(heading_angles_g), torch.ones_like(heading_angles_g)
-    axis_rectified_g = torch.stack([torch.stack([cos_orientation_g, -sin_orientation_g, zero_orientation], dim=-1),
-                                    torch.stack([sin_orientation_g, cos_orientation_g, zero_orientation], dim=-1),
-                                    torch.stack([zero_orientation, zero_orientation, one_orientation], dim=-1)], dim=-1)
-
-    # for pcs, boxes3d, centroid, orientation, sizes in zip(data['point_clouds'][..., 0:3].cpu().numpy(),
-    #                                                       box3d.detach().cpu().numpy(),
-    #                                                       pred_centers.detach().cpu().numpy(),
-    #                                                       heading_angles.detach().cpu().numpy(),
-    #                                                       box_size.detach().cpu().numpy()):
-    #
-    #     for box3d, bb_center, bb_orientation, bb_size in zip(boxes3d, centroid, orientation, sizes):
-    #         pcd, ids = extract_pc_in_box3d(pcs, box3d)
-    #         voxels = voxels_from_point_cloud(pcd.astype(np.float64), bb_center, bb_orientation, bb_size)
-    #         # voxels.get_voxels() could be empty
-    #         # voxels = np.stack([a.grid_index for a in voxels.get_voxels()])
-    #         # states_max = np.max(voxels, axis=0)
-    #         # states_min = np.min(voxels, axis=0)
-    #         # print(states_min, states_max)
-
-    return box_size_g
+    all_voxels = [generate_voxel(*a) for a in unpack_data(data['point_clouds'][..., 0:3], *bbox_param)]
+    return torch.stack(all_voxels).to(device)

@@ -64,10 +64,10 @@ train:
   epochs: 240
   phase: 'completion'
   freeze: ['backbone', 'voting', 'detection']
-  batch_size: 24
+  batch_size: 20
 val:
   phase: 'completion'
-  batch_size: 24
+  batch_size: 20
   use_cls_nms: True
   use_3d_nms: True
   ap_iou_thresholds: [0.25, 0.5]

@@ -4,6 +4,8 @@
 
 import argparse
 from configs.config_utils import CONFIG
+from multiprocessing import Pool
+
 
 def parse_args():
     '''PARAMETERS'''
@@ -11,14 +13,20 @@ def parse_args():
     parser.add_argument('--config', type=str, default='configs/config_files/ISCNet.yaml',
                         help='configure file for training or testing.')
     parser.add_argument('--mode', type=str, default='train', help='train, test or demo.')
-    parser.add_argument('--demo_path', type=str, default='demo/inputs/scene0549_00.off', help='Please specify the demo path.')
+    parser.add_argument('--demo_path', type=str, default='demo/inputs/scene0549_00.off',
+                        help='Please specify the demo path.')
     return parser.parse_args()
 
+
 if __name__ == '__main__':
+    pool = None
     args = parse_args()
     cfg = CONFIG(args.config)
+    setattr(cfg, 'pool', pool)
     cfg.update_config(args.__dict__)
+
     from net_utils.utils import initiate_environment
+
     initiate_environment(cfg.config)
 
     '''Configuration'''
@@ -29,11 +37,13 @@ if __name__ == '__main__':
     '''Run'''
     if cfg.config['mode'] == 'train':
         import train
+
         train.run(cfg)
     if cfg.config['mode'] == 'test':
         import test
+
         test.run(cfg)
     if cfg.config['mode'] == 'demo':
         import demo
-        demo.run(cfg)
 
+        demo.run(cfg)
