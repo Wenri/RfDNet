@@ -224,14 +224,14 @@ class IFNet(nn.Module):
 
         return z
 
-    def decode(self, input_points_for_completion, z, features, **kwargs):
-        ''' Returns occupancy probabilities for the sampled points.
+    def decode(self, input_points_for_completion, z, features, voxel_grid):
+        """ Returns occupancy probabilities for the sampled points.
         :param input_points_for_completion: points
         :param z: latent code z
         :param features: latent conditioned features
         :return:
-        '''
-        logits = self.decoder(input_points_for_completion, z, features, **kwargs)
+        """
+        logits = self(input_points_for_completion, z, features, voxel_grid)
         p_r = dist.Bernoulli(logits=logits)
         return p_r
 

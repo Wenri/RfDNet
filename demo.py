@@ -7,6 +7,8 @@ from configs.config_utils import mount_external_config
 from time import time
 import trimesh
 import numpy as np
+
+from net_utils.voxel_util import voxels_from_proposals
 from utils import pc_util
 from models.iscnet.dataloader import collate_fn
 import torch
@@ -272,7 +274,9 @@ def generate(cfg, net, data, post_processing):
                 cls_codes_for_completion >= torch.max(cls_codes_for_completion, dim=2, keepdim=True)[0]).float()
         cls_codes_for_completion = cls_codes_for_completion.view(batch_size * N_proposals, -1)
 
-        meshes = net.completion.generator.generate_mesh(object_input_features, cls_codes_for_completion)
+        voxels = voxels_from_proposals(cfg, end_points, data, BATCH_PROPOSAL_IDs)
+
+        meshes = net.completion.generator.generate_mesh(object_input_features, cls_codes_for_completion, voxels)
 
     if post_processing:
         pred_mesh_dict = {'meshes': meshes, 'proposal_ids': BATCH_PROPOSAL_IDs}
@@ -360,9 +364,9 @@ def visualize(output_dir, offline):
         orientation = bbox_param[6]
         sizes = bbox_param[3:6]
 
-#        obj_points = obj_points - (obj_points.max(0) + obj_points.min(0)) / 2.
+        #        obj_points = obj_points - (obj_points.max(0) + obj_points.min(0)) / 2.
         obj_points = obj_points.dot(transform_m.T)
-#        obj_points = obj_points.dot(np.diag(1 / (obj_points.max(0) - obj_points.min(0)))).dot(np.diag(sizes))
+        #        obj_points = obj_points.dot(np.diag(1 / (obj_points.max(0) - obj_points.min(0)))).dot(np.diag(sizes))
         obj_points = obj_points.dot(np.diag(sizes))
 
         axis_rectified = np.array(

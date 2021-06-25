@@ -51,7 +51,7 @@ class Generator3D(object):
         self.preprocessor = preprocessor
         self.use_cls_for_completion = use_cls_for_completion
 
-    def generate_mesh(self, object_features, cls_codes, return_stats=True):
+    def generate_mesh(self, object_features, cls_codes, voxel_grid, return_stats=True, **kwargs):
         ''' Generates the output mesh.
 
         Args:
@@ -62,7 +62,6 @@ class Generator3D(object):
         self.model.eval()
         device = object_features.device
         batch_size = object_features.size(0)
-        kwargs = {}
 
         if self.model.use_cls_for_completion:
             object_features = torch.cat([object_features, cls_codes], dim=-1)
@@ -70,18 +69,19 @@ class Generator3D(object):
         meshes = []
         for batch_id in range(batch_size):
             z = self.model.get_z_from_prior((1,), sample=self.sample, device=device)
-            mesh = self.generate_from_latent(z, object_features[[batch_id]], device, **kwargs)
+            mesh = self.generate_from_latent(z, object_features[[batch_id]], device, voxel_grid=voxel_grid[[batch_id]],
+                                             **kwargs)
             meshes.append(mesh)
 
         return meshes
 
-    def generate_from_latent(self, z, c=None, device='cuda',  **kwargs):
-        ''' Generates mesh from latent.
+    def generate_from_latent(self, z, c=None, device='cuda', **kwargs):
+        """ Generates mesh from latent.
 
         Args:
             z (tensor): latent code z
             c (tensor): latent conditioned code c
-        '''
+        """
         threshold = np.log(self.threshold) - np.log(1. - self.threshold)
 
         # Compute bounding box size
@@ -91,7 +91,7 @@ class Generator3D(object):
         if self.upsampling_steps == 0:
             nx = self.resolution0
             pointsf = box_size * make_3d_grid(
-                (-0.5,)*3, (0.5,)*3, (nx,)*3
+                (-0.5,) * 3, (0.5,) * 3, (nx,) * 3
             )
             values = self.eval_points(pointsf, z, c, device, **kwargs).cpu().numpy()
             value_grid = values.reshape(nx, nx, nx)
@@ -164,7 +164,7 @@ class Generator3D(object):
         # Undo padding
         vertices -= 1
         # Normalize to bounding box
-        vertices /= np.array([n_x-1, n_y-1, n_z-1])
+        vertices /= np.array([n_x - 1, n_y - 1, n_z - 1])
         vertices = box_size * (vertices - 0.5)
 
         # mesh_pymesh = pymesh.form_mesh(vertices, triangles)
@@ -237,7 +237,7 @@ class Generator3D(object):
 
         # Some shorthands
         n_x, n_y, n_z = occ_hat.shape
-        assert(n_x == n_y == n_z)
+        assert (n_x == n_y == n_z)
         # threshold = np.log(self.threshold) - np.log(1. - self.threshold)
         threshold = self.threshold
 
@@ -264,7 +264,7 @@ class Generator3D(object):
             face_v2 = face_vertex[:, 2, :] - face_vertex[:, 1, :]
             face_normal = torch.cross(face_v1, face_v2)
             face_normal = face_normal / \
-                (face_normal.norm(dim=1, keepdim=True) + 1e-10)
+                          (face_normal.norm(dim=1, keepdim=True) + 1e-10)
             face_value = torch.sigmoid(
                 self.model.decode(face_point.unsqueeze(0), z, c).logits
             )
