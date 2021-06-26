@@ -4,18 +4,18 @@ import numpy as np
 import torch
 import neuralnet_pytorch as nnt
 
-from net_utils.box_util import get_3d_box_cuda, roty_cuda
+from net_utils.box_util import get_3d_box_cuda
 from net_utils.libs import flip_axis_to_camera_cuda, flip_axis_to_depth_cuda
 
 
 def pointcloud2voxel_fast(pc: torch.Tensor, voxel_size: int, grid_size=1., filter_outlier=True):
     b, n, _ = pc.shape
     half_size = grid_size / 2.
-    valid = (pc >= -half_size) & (pc <= half_size)
-    valid = torch.all(valid, 2)
     pc_grid = (pc + half_size) * (voxel_size - 1.)
     indices_floor = torch.floor(pc_grid)
     indices = indices_floor.long()
+    valid = torch.logical_and(indices >= 0, indices < voxel_size - 1)
+    valid = torch.all(valid, 2)
     batch_indices = torch.arange(b).to(pc.device)
     batch_indices = nnt.utils.shape_padright(batch_indices)
     batch_indices = nnt.utils.tile(batch_indices, (1, n))
@@ -26,21 +26,21 @@ def pointcloud2voxel_fast(pc: torch.Tensor, voxel_size: int, grid_size=1., filte
     r = pc_grid - indices_floor
     rr = (1. - r, r)
     if filter_outlier:
-        valid = valid.flatten()
+        valid = torch.flatten(valid)
         indices = indices[valid]
 
     out_shape = (b,) + (voxel_size,) * 3
-    voxels = torch.zeros(*out_shape, device=pc.device).flatten()
+    voxels = torch.flatten(torch.zeros(*out_shape, device=pc.device))
 
     # interpolate_scatter3d
-    for pos in itertools.product(range(2), repeat=3):
-        updates_raw = rr[pos[0]][..., 0] * rr[pos[1]][..., 1] * rr[pos[2]][..., 2]
+    for i, j, k in itertools.product(range(2), repeat=3):
+        updates_raw = rr[i][..., 0] * rr[j][..., 1] * rr[k][..., 2]
         updates = updates_raw.flatten()
 
         if filter_outlier:
             updates = updates[valid]
 
-        indices_shift = torch.tensor([(0,) + pos]).to(pc.device)
+        indices_shift = torch.tensor([[0, i, j, k]], dtype=indices.dtype, device=indices.device)
         indices_loc = indices + indices_shift
 
         voxels.scatter_add_(-1, nnt.utils.ravel_index(indices_loc.t(), out_shape), updates)
@@ -95,8 +95,7 @@ def voxels_from_proposals(cfg, end_points, data, BATCH_PROPOSAL_IDs, voxel_size=
 
     box3d, box_size, pred_centers, heading_angles = gather_bbox(dataset_config, gather_ids_p, *gather_param_p)
 
-    transform_shapenet = torch.tensor([[0, 0, -1], [-1, 0, 0], [0, 1, 0]], dtype=torch.float32,
-                                      device=heading_angles.device)
+    transform_shapenet = torch.tensor([[0., 0., -1.], [-1., 0., 0.], [0., 1., 0.]], device=device)
 
     cos_orientation, sin_orientation = torch.cos(heading_angles), torch.sin(heading_angles)
     zero_orientation, one_orientation = torch.zeros_like(heading_angles), torch.ones_like(heading_angles)
