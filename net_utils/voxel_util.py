@@ -1,14 +1,12 @@
-import itertools
-
 import numpy as np
 import torch
-import neuralnet_pytorch as nnt
 
 from net_utils.box_util import get_3d_box_cuda
 from net_utils.libs import flip_axis_to_camera_cuda, flip_axis_to_depth_cuda
 
 
-def pointcloud2voxel_fast(pc: torch.Tensor, voxel_size: int, grid_size=1., filter_outlier=True):
+@torch.jit.script
+def pointcloud2voxel_fast(pc: torch.Tensor, voxel_size: int = 32, grid_size: float = 1.):
     b, n, _ = pc.shape
     half_size = grid_size / 2.
     pc_grid = (pc + half_size) * (voxel_size - 1.)
@@ -16,34 +14,33 @@ def pointcloud2voxel_fast(pc: torch.Tensor, voxel_size: int, grid_size=1., filte
     indices = indices_floor.long()
     valid = torch.logical_and(indices >= 0, indices < voxel_size - 1)
     valid = torch.all(valid, 2)
-    batch_indices = torch.arange(b).to(pc.device)
-    batch_indices = nnt.utils.shape_padright(batch_indices)
-    batch_indices = nnt.utils.tile(batch_indices, (1, n))
-    batch_indices = nnt.utils.shape_padright(batch_indices)
+    batch_indices = torch.arange(b, device=pc.device)
+    batch_indices = batch_indices.unsqueeze(1).expand(-1, n).unsqueeze(2)
     indices = torch.cat((batch_indices, indices), 2)
     indices = torch.reshape(indices, (-1, 4))
 
     r = pc_grid - indices_floor
     rr = (1. - r, r)
-    if filter_outlier:
-        valid = torch.flatten(valid)
-        indices = indices[valid]
+    valid = torch.flatten(valid)
+    indices = indices[valid]
 
-    out_shape = (b,) + (voxel_size,) * 3
-    voxels = torch.flatten(torch.zeros(*out_shape, device=pc.device))
+    out_shape = (b, voxel_size, voxel_size, voxel_size)
+    voxels = torch.flatten(torch.zeros(*out_shape, dtype=pc.dtype, device=pc.device))
+    out_shape_tensor = torch.tensor(out_shape, dtype=indices.dtype, device=pc.device)
 
     # interpolate_scatter3d
-    for i, j, k in itertools.product(range(2), repeat=3):
-        updates_raw = rr[i][..., 0] * rr[j][..., 1] * rr[k][..., 2]
-        updates = updates_raw.flatten()
+    for i in range(2):
+        for j in range(2):
+            for k in range(2):
+                updates_raw = rr[i][..., 0] * rr[j][..., 1] * rr[k][..., 2]
+                updates = torch.flatten(updates_raw)[valid]
 
-        if filter_outlier:
-            updates = updates[valid]
-
-        indices_shift = torch.tensor([[0, i, j, k]], dtype=indices.dtype, device=indices.device)
-        indices_loc = indices + indices_shift
-
-        voxels.scatter_add_(-1, nnt.utils.ravel_index(indices_loc.t(), out_shape), updates)
+                indices_shift = torch.tensor([[0, i, j, k]], dtype=indices.dtype, device=pc.device)
+                indices_loc = (indices + indices_shift).T
+                indices_loc = [indices_loc[i].long() * torch.prod(out_shape_tensor[i + 1:])
+                               for i in range(len(out_shape))]
+                indices_loc = indices_loc[0] + indices_loc[1] + indices_loc[2] + indices_loc[3]
+                voxels.scatter_add_(-1, indices_loc, updates)
 
     voxels = torch.clamp(voxels, 0., 1.).view(*out_shape)
     return voxels
@@ -70,7 +67,7 @@ def gather_bbox(dataset_config, gather_ids, center, heading_class, heading_resid
     return box3d, box_size, pred_centers, heading_angles
 
 
-def voxels_from_proposals(cfg, end_points, data, BATCH_PROPOSAL_IDs, voxel_size=32):
+def voxels_from_proposals(cfg, end_points, data, BATCH_PROPOSAL_IDs):
     device = end_points['center'].device
     dataset_config = cfg.eval_config['dataset_config']
     batch_size = BATCH_PROPOSAL_IDs.size(0)
@@ -107,6 +104,6 @@ def voxels_from_proposals(cfg, end_points, data, BATCH_PROPOSAL_IDs, voxel_size=
     point_clouds = torch.matmul(point_clouds - pred_centers.unsqueeze(2), axis_rectified.transpose(2, 3))
 
     pcd_cuda = torch.matmul(point_clouds / box_size.unsqueeze(2), transform_shapenet)
-    all_voxels = pointcloud2voxel_fast(pcd_cuda.view(batch_size * N_proposals, -1, 3), voxel_size)
+    all_voxels = pointcloud2voxel_fast(pcd_cuda.view(batch_size * N_proposals, -1, 3))
 
     return all_voxels
