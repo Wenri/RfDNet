@@ -140,7 +140,7 @@ class ISCNet(BaseNetwork):
                 # proposal_to_gt_box_w_cls_list (B x N_Limit x 4): (bool_mask, proposal_id, gt_box_id, cls_id)
                 input_points_for_completion, \
                 input_points_occ_for_completion, \
-                _ = self.prepare_data(end_points, data, BATCH_PROPOSAL_IDs)
+                _, voxels = self.prepare_data(end_points, data, BATCH_PROPOSAL_IDs)
 
                 batch_size, feat_dim, N_proposals = object_input_features.size()
                 object_input_features = object_input_features.transpose(1, 2).contiguous().view(
@@ -149,14 +149,14 @@ class ISCNet(BaseNetwork):
                 gather_ids = BATCH_PROPOSAL_IDs[..., 0].unsqueeze(-1).repeat(1, 1, end_points['sem_cls_scores'].size(2))
                 cls_codes_for_completion = torch.gather(end_points['sem_cls_scores'], 1, gather_ids)
                 cls_codes_for_completion = (
-                        cls_codes_for_completion >= torch.max(cls_codes_for_completion, dim=2, keepdim=True)[
-                    0]).float()
+                        cls_codes_for_completion >= torch.max(cls_codes_for_completion, dim=2, keepdim=True)[0]
+                ).float()
                 cls_codes_for_completion = cls_codes_for_completion.view(batch_size * N_proposals, -1)
 
                 completion_loss, shape_example = self.completion.compute_loss(object_input_features,
                                                                               input_points_for_completion,
                                                                               input_points_occ_for_completion,
-                                                                              cls_codes_for_completion, False)
+                                                                              cls_codes_for_completion, voxels, False)
                 if shape_example is not None:
                     gt_voxels = data['object_voxels'][0][BATCH_PROPOSAL_IDs[0, ..., 1]]
                     ious = compute_iou(shape_example.cpu().numpy(), gt_voxels.cpu().numpy())
@@ -166,7 +166,8 @@ class ISCNet(BaseNetwork):
                     iou_stats = None
 
                 if self.cfg.config['generation']['generate_mesh']:
-                    meshes = self.completion.generator.generate_mesh(object_input_features, cls_codes_for_completion)
+                    meshes = self.completion.generator.generate_mesh(object_input_features, cls_codes_for_completion,
+                                                                     voxels)
                 else:
                     meshes = None
             else:
@@ -212,7 +213,7 @@ class ISCNet(BaseNetwork):
 
         index_list = []
         box_params_list = []
-        max_obj_points = 10000
+        max_obj_points = 12000
         max_pc_in_box = 50000
         obj_points_list = []
         obj_points_mask_list = []
