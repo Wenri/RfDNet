@@ -1,5 +1,7 @@
 import torch
 import torch.nn as nn
+
+from models.iscnet.modules.layers import CResnetBlockConv1d
 from models.registers import MODULES
 import torch.distributions as dist
 from models.iscnet.modules.encoder_latent import Encoder_Latent
@@ -10,7 +12,7 @@ from external.common import make_3d_grid
 
 @MODULES.register_module
 class IFNet(nn.Module):
-    def __init__(self, cfg, optim_spec=None, hidden_dim=256):
+    def __init__(self, cfg, optim_spec=None, hidden_size=256, n_blocks=5):
         super().__init__()
         '''Optimizer parameters used in training'''
         self.optim_spec = optim_spec
@@ -44,7 +46,7 @@ class IFNet(nn.Module):
                                          preprocessor=None)
 
         # 128**3 res input
-        self.conv_in = nn.Conv3d(1, 16, 3, padding=1, padding_mode='replicate')
+        self.conv_in = nn.Conv3d(self.c_dim + 1, 16, 3, padding=1, padding_mode='replicate')
         self.conv_0 = nn.Conv3d(16, 32, 3, padding=1, padding_mode='replicate')
         self.conv_0_1 = nn.Conv3d(32, 32, 3, padding=1, padding_mode='replicate')
         self.conv_1 = nn.Conv3d(32, 64, 3, padding=1, padding_mode='replicate')
@@ -55,20 +57,17 @@ class IFNet(nn.Module):
         self.conv_3_1 = nn.Conv3d(128, 128, 3, padding=1, padding_mode='replicate')
 
         feature_size = (1 + 16 + 32 + 64 + 128 + 128) * 7
-        hidden_size = feature_size
 
         self.fc_p = nn.Conv1d(dim, hidden_size, 1)
 
         if not self.z_dim == 0:
             self.fc_z = nn.Linear(self.z_dim, hidden_size)
 
-        if not self.c_dim == 0:
-            self.fc_c = nn.Linear(self.c_dim, hidden_size)
-
-        self.fc_0 = nn.Conv1d(feature_size, hidden_dim, 1)
-        self.fc_1 = nn.Conv1d(hidden_dim, hidden_dim, 1)
-        self.fc_2 = nn.Conv1d(hidden_dim, hidden_dim, 1)
-        self.fc_out = nn.Conv1d(hidden_dim, 1, 1)
+        self.blocks = nn.ModuleList([
+            CResnetBlockConv1d(self.c_dim, hidden_size) for _ in range(n_blocks)
+        ])
+        self.fc_0 = nn.Conv1d(feature_size, hidden_size, 1)
+        self.fc_out = nn.Conv1d(hidden_size, 1, 1)
         self.actvn = nn.ReLU()
 
         self.maxpool = nn.MaxPool3d(2)
@@ -88,7 +87,7 @@ class IFNet(nn.Module):
                 input[x] = y * displacment
                 displacments.append(input)
 
-        self.displacments = torch.Tensor(displacments)
+        self.register_buffer('displacments', torch.Tensor(displacments), persistent=False)
 
     def forward(self, p, z, c, x=None):
         net = self.fc_p(p.transpose(1, 2))
@@ -97,21 +96,19 @@ class IFNet(nn.Module):
             net_z = self.fc_z(z).unsqueeze(2)
             net = net + net_z
 
-        if self.c_dim != 0:
-            net_c = self.fc_c(c).unsqueeze(2)
-            net = net + net_c
-
         features = net
 
         if x is not None:
             x = x.unsqueeze(1)
+            x_vol = c.unsqueeze(2).unsqueeze(3).unsqueeze(4).expand(-1, -1, 32, 32, 32)
+            x_vol = torch.cat([x, x_vol], dim=1)
 
             p_features = features
             p = p.unsqueeze(1).unsqueeze(1)
-            p = torch.cat([p + d for d in self.displacments.to(p.device)], dim=2)  # (B,1,7,num_samples,3)
+            p = torch.cat([p + d for d in self.displacments], dim=2)  # (B,1,7,num_samples,3)
             feature_0 = F.grid_sample(x, p, padding_mode='border')  # out : (B,C (of x), 1,1,sample_num)
 
-            net = self.actvn(self.conv_in(x))
+            net = self.actvn(self.conv_in(x_vol))
             net = self.conv_in_bn(net)
             feature_1 = F.grid_sample(net, p, padding_mode='border')  # out : (B,C (of x), 1,1,sample_num)
             net = self.maxpool(net)
@@ -145,11 +142,13 @@ class IFNet(nn.Module):
                                  dim=1)  # (B, features, 1,7,sample_num)
             shape = features.shape
             features = features.view(shape[0], shape[1] * shape[3], shape[4])  # (B, featues_per_sample, samples_num)
+            features = self.actvn(self.fc_0(features))
             features = features + p_features  # (B, featue_size, samples_num)
 
-        net = self.actvn(self.fc_0(features))
-        net = self.actvn(self.fc_1(net))
-        net = self.actvn(self.fc_2(net))
+        net = features
+        for block in self.blocks:
+            net = block(net, c)
+
         net = self.fc_out(net)
         out = net.squeeze(1)
 
