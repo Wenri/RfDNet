@@ -1,7 +1,6 @@
 import torch.nn as nn
 from .layers import (
-    CResnetBlockConv1d,
-    CBatchNorm1d, CBatchNorm1d_legacy,
+    CResnetBlockConv1d, CBatchNorm1d,
 )
 import torch.nn.functional as F
 from models.iscnet.modules.layers import ResnetBlockFC
@@ -83,7 +82,7 @@ class DecoderCBatchNorm(nn.Module):
     '''
 
     def __init__(self, dim=3, z_dim=128, c_dim=128,
-                 hidden_size=256, n_blocks=5, leaky=False, legacy=False):
+                 hidden_size=256, n_blocks=5, leaky=False):
         super().__init__()
         self.z_dim = z_dim
         if not z_dim == 0:
@@ -95,10 +94,7 @@ class DecoderCBatchNorm(nn.Module):
             CResnetBlockConv1d(c_dim, hidden_size) for i in range(n_blocks)
         ])
 
-        if not legacy:
-            self.bn = CBatchNorm1d(c_dim, hidden_size)
-        else:
-            self.bn = CBatchNorm1d_legacy(c_dim, hidden_size)
+        self.bn = CBatchNorm1d(c_dim, hidden_size)
 
         self.fc_out = nn.Conv1d(hidden_size, 1, 1)
 

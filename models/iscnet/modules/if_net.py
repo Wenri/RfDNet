@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 
-from models.iscnet.modules.layers import CResnetBlockConv1d
+from models.iscnet.modules.layers import CResnetBlockConv1d, CResnetBlockConv3d
 from models.registers import MODULES
 import torch.distributions as dist
 from models.iscnet.modules.encoder_latent import Encoder_Latent
@@ -46,15 +46,11 @@ class IFNet(nn.Module):
                                          preprocessor=None)
 
         # 128**3 res input
-        self.conv_in = nn.Conv3d(self.c_dim + 1, 16, 3, padding=1, padding_mode='replicate')
-        self.conv_0 = nn.Conv3d(16, 32, 3, padding=1, padding_mode='replicate')
-        self.conv_0_1 = nn.Conv3d(32, 32, 3, padding=1, padding_mode='replicate')
-        self.conv_1 = nn.Conv3d(32, 64, 3, padding=1, padding_mode='replicate')
-        self.conv_1_1 = nn.Conv3d(64, 64, 3, padding=1, padding_mode='replicate')
-        self.conv_2 = nn.Conv3d(64, 128, 3, padding=1, padding_mode='replicate')
-        self.conv_2_1 = nn.Conv3d(128, 128, 3, padding=1, padding_mode='replicate')
-        self.conv_3 = nn.Conv3d(128, 128, 3, padding=1, padding_mode='replicate')
-        self.conv_3_1 = nn.Conv3d(128, 128, 3, padding=1, padding_mode='replicate')
+        self.conv_in = CResnetBlockConv3d(self.c_dim, 1, 16, 16)
+        self.conv_0 = CResnetBlockConv3d(self.c_dim, 16, 32, 32)
+        self.conv_1 = CResnetBlockConv3d(self.c_dim, 32, 64, 64)
+        self.conv_2 = CResnetBlockConv3d(self.c_dim, 64, 128, 128)
+        self.conv_3 = CResnetBlockConv3d(self.c_dim, 128)
 
         feature_size = (1 + 16 + 32 + 64 + 128 + 128) * 7
 
@@ -71,12 +67,6 @@ class IFNet(nn.Module):
         self.actvn = nn.ReLU()
 
         self.maxpool = nn.MaxPool3d(2)
-
-        self.conv_in_bn = nn.BatchNorm3d(16)
-        self.conv0_1_bn = nn.BatchNorm3d(32)
-        self.conv1_1_bn = nn.BatchNorm3d(64)
-        self.conv2_1_bn = nn.BatchNorm3d(128)
-        self.conv3_1_bn = nn.BatchNorm3d(128)
 
         displacment = 0.0722
         displacments = []
@@ -100,40 +90,29 @@ class IFNet(nn.Module):
 
         if x is not None:
             x = x.unsqueeze(1)
-            x_vol = c.unsqueeze(2).unsqueeze(3).unsqueeze(4).expand(-1, -1, 32, 32, 32)
-            x_vol = torch.cat([x, x_vol], dim=1)
 
             p_features = features
             p = p.unsqueeze(1).unsqueeze(1)
             p = torch.cat([p + d for d in self.displacments], dim=2)  # (B,1,7,num_samples,3)
             feature_0 = F.grid_sample(x, p, padding_mode='border')  # out : (B,C (of x), 1,1,sample_num)
 
-            net = self.actvn(self.conv_in(x_vol))
-            net = self.conv_in_bn(net)
+            net = self.conv_in(x, c)
             feature_1 = F.grid_sample(net, p, padding_mode='border')  # out : (B,C (of x), 1,1,sample_num)
             net = self.maxpool(net)
 
-            net = self.actvn(self.conv_0(net))
-            net = self.actvn(self.conv_0_1(net))
-            net = self.conv0_1_bn(net)
+            net = self.conv_0(net, c)
             feature_2 = F.grid_sample(net, p, padding_mode='border')  # out : (B,C (of x), 1,1,sample_num)
             net = self.maxpool(net)
 
-            net = self.actvn(self.conv_1(net))
-            net = self.actvn(self.conv_1_1(net))
-            net = self.conv1_1_bn(net)
+            net = self.conv_1(net, c)
             feature_3 = F.grid_sample(net, p, padding_mode='border')  # out : (B,C (of x), 1,1,sample_num)
             net = self.maxpool(net)
 
-            net = self.actvn(self.conv_2(net))
-            net = self.actvn(self.conv_2_1(net))
-            net = self.conv2_1_bn(net)
+            net = self.conv_2(net, c)
             feature_4 = F.grid_sample(net, p, padding_mode='border')
             net = self.maxpool(net)
 
-            net = self.actvn(self.conv_3(net))
-            net = self.actvn(self.conv_3_1(net))
-            net = self.conv3_1_bn(net)
+            net = self.conv_3(net, c)
             feature_5 = F.grid_sample(net, p, padding_mode='border')
 
             # here every channel corresponds to one feature.
