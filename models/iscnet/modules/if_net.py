@@ -89,10 +89,10 @@ class IFNet(nn.Module):
         features = net
 
         if x is not None:
-            x = x.unsqueeze(1)
+            x = x.transpose(1, 3).unsqueeze(1)
 
             p_features = features
-            p = p.unsqueeze(1).unsqueeze(1)
+            p = p.unsqueeze(1).unsqueeze(1) * 2
             p = torch.cat([p + d for d in self.displacments], dim=2)  # (B,1,7,num_samples,3)
             feature_0 = F.grid_sample(x, p, padding_mode='border')  # out : (B,C (of x), 1,1,sample_num)
 

@@ -1,6 +1,7 @@
 import numpy as np
 import torch
 
+from torch.nn import functional as F
 from net_utils.box_util import get_3d_box_cuda
 from net_utils.libs import flip_axis_to_camera_cuda, flip_axis_to_depth_cuda
 
@@ -107,3 +108,17 @@ def voxels_from_proposals(cfg, end_points, data, BATCH_PROPOSAL_IDs):
     all_voxels = pointcloud2voxel_fast(pcd_cuda.view(batch_size * N_proposals, -1, 3))
 
     return all_voxels
+
+
+def pc2voxel_test():
+    p = torch.rand(1, 1, 3) - 0.5
+    x = pointcloud2voxel_fast(p)
+    print(torch.where(x))
+    x = x.transpose(1, 3).unsqueeze(1)
+    p = p.unsqueeze(1).unsqueeze(1) * 2
+    ret = F.grid_sample(x, p, padding_mode='border')
+    print(float(ret.flatten()))
+
+
+if __name__ == '__main__':
+    pc2voxel_test()
