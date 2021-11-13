@@ -2,19 +2,22 @@
 # author: ynie
 # date: Feb, 2020
 
-from net_utils.utils import LossRecorder, LogBoard
 from time import time
+
+from net_utils.utils import LossRecorder, LogBoard
+
 log_board = LogBoard()
 
+
 def train_epoch(cfg, epoch, trainer, dataloaders):
-    '''
+    """
     train by epoch
     :param cfg: configuration file
     :param epoch: epoch id.
     :param trainer: specific trainer for networks
     :param dataloaders: dataloader for training and validation
     :return:
-    '''
+    """
     for phase in ['train', 'val']:
         dataloader = dataloaders[phase]
         batch_size = cfg.config[phase]['batch_size']
@@ -25,7 +28,7 @@ def train_epoch(cfg, epoch, trainer, dataloaders):
         trainer.net.module.set_mode()
         cfg.log_string('-' * 100)
         cfg.log_string('Switch Phase to %s.' % (phase))
-        cfg.log_string('-'*100)
+        cfg.log_string('-' * 100)
         for iter, data in enumerate(dataloader):
             if phase == 'train':
                 loss = trainer.train_step(data)
@@ -39,7 +42,8 @@ def train_epoch(cfg, epoch, trainer, dataloaders):
             loss_recorder.update_loss(loss)
 
             if ((iter + 1) % cfg.config['log']['print_step']) == 0:
-                cfg.log_string('Process: Phase: %s. Epoch %d: %d/%d. Current loss: %s.' % (phase, epoch, iter + 1, len(dataloader), str(loss)))
+                cfg.log_string('Process: Phase: %s. Epoch %d: %d/%d. Current loss: %s.' % (
+                phase, epoch, iter + 1, len(dataloader), str(loss)))
                 log_board.update(loss, cfg.config['log']['print_step'], phase)
 
         cfg.log_string('=' * 100)
@@ -49,8 +53,9 @@ def train_epoch(cfg, epoch, trainer, dataloaders):
 
     return loss_recorder.loss_recorder
 
+
 def train(cfg, trainer, scheduler, bnm_scheduler, checkpoint, train_loader, val_loader):
-    '''
+    """
     train epochs for network
     :param cfg: configuration file
     :param scheduler: scheduler for optimizer
@@ -60,7 +65,7 @@ def train(cfg, trainer, scheduler, bnm_scheduler, checkpoint, train_loader, val_
     :param train_loader: dataloader for training
     :param val_loader: dataloader for validation
     :return:
-    '''
+    """
     start_epoch = scheduler.last_epoch
     total_epochs = cfg.config['train']['epochs']
     min_eval_loss = checkpoint.get('min_loss')
@@ -77,13 +82,13 @@ def train(cfg, trainer, scheduler, bnm_scheduler, checkpoint, train_loader, val_
         eval_loss = trainer.eval_loss_parser(eval_loss_recorder)
         scheduler.step(eval_loss)
         bnm_scheduler.step()
-        cfg.log_string('Epoch (%d/%s) Time elapsed: (%f).' % (epoch + 1, total_epochs, time()-start))
+        cfg.log_string('Epoch (%d/%s) Time elapsed: (%f).' % (epoch + 1, total_epochs, time() - start))
 
         # save checkpoint
         checkpoint.register_modules(epoch=epoch, min_loss=eval_loss)
         checkpoint.save('last')
         cfg.log_string('Saved the latest checkpoint.')
-        if epoch==0 or eval_loss<min_eval_loss:
+        if epoch == 0 or eval_loss < min_eval_loss:
             checkpoint.save('best')
             min_eval_loss = eval_loss
             cfg.log_string('Saved the best checkpoint.')

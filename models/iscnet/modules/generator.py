@@ -12,7 +12,7 @@ import time
 
 
 class Generator3D(object):
-    '''  Generator class for Occupancy Networks.
+    """  Generator class for Occupancy Networks.
 
     It provides functions to generate the final mesh as well refining options.
 
@@ -29,7 +29,7 @@ class Generator3D(object):
         sample (bool): whether z should be sampled
         simplify_nfaces (int): number of faces the mesh should be simplified to
         preprocessor (nn.Module): preprocessor for inputs
-    '''
+    """
 
     def __init__(self, model, points_batch_size=100000,
                  threshold=0.5, refinement_step=0,

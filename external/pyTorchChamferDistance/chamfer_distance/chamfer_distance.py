@@ -1,10 +1,11 @@
-
 import torch
 
 from torch.utils.cpp_extension import load
+
 cd = load(name="cd",
           sources=["external/pyTorchChamferDistance/chamfer_distance/chamfer_distance.cpp",
                    "external/pyTorchChamferDistance/chamfer_distance/chamfer_distance.cu"])
+
 
 class ChamferDistanceFunction(torch.autograd.Function):
     @staticmethod
