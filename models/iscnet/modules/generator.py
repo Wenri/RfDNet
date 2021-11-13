@@ -121,13 +121,13 @@ class Generator3D(object):
         return mesh
 
     def eval_points(self, p, z, c=None, device='cuda', **kwargs):
-        ''' Evaluates the occupancy values for the points.
+        """ Evaluates the occupancy values for the points.
 
         Args:
             p (tensor): points
             z (tensor): latent code z
             c (tensor): latent conditioned code c
-        '''
+        """
         p_split = torch.split(p, self.points_batch_size)
         occ_hats = []
 
@@ -143,13 +143,13 @@ class Generator3D(object):
         return occ_hat
 
     def extract_mesh(self, occ_hat, z, c=None):
-        ''' Extracts the mesh from the predicted occupancy grid.
+        """ Extracts the mesh from the predicted occupancy grid.
 
         Args:
             occ_hat (tensor): value grid of occupancies
             z (tensor): latent code z
             c (tensor): latent conditioned code c
-        '''
+        """
         # Some short hands
         n_x, n_y, n_z = occ_hat.shape
         box_size = 1 + self.padding
@@ -197,13 +197,13 @@ class Generator3D(object):
         return mesh
 
     def estimate_normals(self, vertices, z, c=None, device='cuda'):
-        ''' Estimates the normals by computing the gradient of the objective.
+        """ Estimates the normals by computing the gradient of the objective.
 
         Args:
             vertices (numpy array): vertices of the mesh
             z (tensor): latent code z
             c (tensor): latent conditioned code c
-        '''
+        """
         vertices = torch.FloatTensor(vertices)
         vertices_split = torch.split(vertices, self.points_batch_size)
 
@@ -224,14 +224,14 @@ class Generator3D(object):
         return normals
 
     def refine_mesh(self, mesh, occ_hat, z, c=None, device='cuda'):
-        ''' Refines the predicted mesh.
+        """ Refines the predicted mesh.
 
         Args:
             mesh (trimesh object): predicted mesh
             occ_hat (tensor): predicted occupancy grid
             z (tensor): latent code z
             c (tensor): latent conditioned code c
-        '''
+        """
 
         self.model.eval()
 

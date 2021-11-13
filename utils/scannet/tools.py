@@ -42,13 +42,13 @@ def calc_Mbbox(model):
 
 
 def normalize(a, axis=-1, order=2):
-    '''
+    """
     Normalize any kinds of tensor data along a specific axis
     :param a: source tensor data.
     :param axis: data on this axis will be normalized.
     :param order: Norm order, L0, L1 or L2.
     :return:
-    '''
+    """
     l2 = np.atleast_1d(np.linalg.norm(a, order, axis))
     l2[l2 == 0] = 1
 
@@ -104,12 +104,12 @@ def json_read(filename):
         return json.load(infile)
 
 def get_box_corners(center, vectors):
-    '''
+    """
     Convert box center and vectors to the corner-form
     :param center:
     :param vectors:
     :return: corner points related to the box
-    '''
+    """
     corner_pnts = [None] * 8
     corner_pnts[0] = tuple(center - vectors[0] - vectors[1] - vectors[2])
     corner_pnts[1] = tuple(center + vectors[0] - vectors[1] - vectors[2])

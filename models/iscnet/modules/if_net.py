@@ -135,7 +135,7 @@ class IFNet(nn.Module):
 
     def compute_loss(self, input_features_for_completion, input_points_for_completion, input_points_occ_for_completion,
                      cls_codes_for_completion, voxel_grids, export_shape=False):
-        '''
+        """
         Compute loss for OccNet
         :param input_features_for_completion (N_B x D): Number of bounding boxes x Dimension of proposal feature.
         :param input_points_for_completion (N_B, N_P, 3): Number of bounding boxes x Number of Points x 3.
@@ -143,7 +143,7 @@ class IFNet(nn.Module):
         :param cls_codes_for_completion (N_B, N_C): One-hot category codes.
         :param export_shape (bool): whether to export a shape voxel example.
         :return:
-        '''
+        """
         device = input_features_for_completion.device
         batch_size = input_features_for_completion.size(0)
         if self.use_cls_for_completion:

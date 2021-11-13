@@ -69,7 +69,7 @@ class Vis_Scan2CAD(Vis_Scannet):
             cls_id = SHAPENETCLASSES.index(ShapeNetIDMap[scan2cad_object['shapenet_catid'][1:]])
             instances_scan2cad.append(
                 {'inst_id': best_instance_id, 'bbox': scan2cad_object['box3D'],
-                 'cls_id': cls_id, 'vtk_object':scan2cad_object['vtk_object']})
+                 'cls_id': cls_id, 'vtk_object': scan2cad_object['vtk_object']})
         self.instances = instances_scan2cad
         self.cam_K = np.array([[600, 0, 800], [0, 600, 600], [0, 0, 1]])
 
@@ -163,7 +163,7 @@ class Vis_Scan2CAD(Vis_Scannet):
             # draw obj model
             if box3D['vtk_object'] is not None:
                 object_actor = self.set_actor(self.set_mapper(box3D['vtk_object'], 'model'))
-                object_actor.GetProperty().SetColor(color/255)
+                object_actor.GetProperty().SetColor(color / 255)
                 object_actor.GetProperty().SetInterpolationToPBR()
                 renderer.AddActor(object_actor)
             # draw orientations
@@ -242,7 +242,8 @@ if __name__ == '__main__':
                                 center - np.array([0, 0, 1]),
                                 center - np.array([1, 0, 0]),
                                 center + np.array([0, 1, 0])])
-        axis_points_transformed = np.hstack([axis_points, np.ones((axis_points.shape[0], 1))]).dot(transform_shape.T)[..., :3]
+        axis_points_transformed = np.hstack([axis_points, np.ones((axis_points.shape[0], 1))]).dot(transform_shape.T)[
+                                  ..., :3]
         center_transformed = axis_points_transformed[0]
         forward_transformed = axis_points_transformed[1] - axis_points_transformed[0]
         left_transformed = axis_points_transformed[2] - axis_points_transformed[0]
@@ -254,7 +255,7 @@ if __name__ == '__main__':
         '''get rectified axis'''
         axis_rectified = np.zeros_like(axis_transformed)
         up_rectified_id = np.argmax(axis_transformed[:, 2])
-        forward_rectified_id = 0 if up_rectified_id !=0 else (up_rectified_id + 1) % 3
+        forward_rectified_id = 0 if up_rectified_id != 0 else (up_rectified_id + 1) % 3
         left_rectified_id = np.setdiff1d([0, 1, 2], [up_rectified_id, forward_rectified_id])[0]
         up_rectified = np.array([0, 0, 1])
         forward_rectified = axis_transformed[forward_rectified_id]
@@ -272,7 +273,8 @@ if __name__ == '__main__':
         obj_points = coordinates.dot(axis_rectified) + center_transformed
         '''define bounding boxes'''
         sizes = (coordinates.max(0) - coordinates.min(0)) / 2
-        vectors = np.diag(sizes[[forward_rectified_id, left_rectified_id, up_rectified_id]]).dot(np.array([forward_rectified, left_rectified, up_rectified]))
+        vectors = np.diag(sizes[[forward_rectified_id, left_rectified_id, up_rectified_id]]).dot(
+            np.array([forward_rectified, left_rectified, up_rectified]))
         box3D = np.eye(4)
         box3D[:3, :] = np.hstack([vectors.T, center_transformed[np.newaxis].T])
 
@@ -280,7 +282,8 @@ if __name__ == '__main__':
         polydata.GetPoints().SetData(points_array)
         vtk_object.Update()
 
-        shapenet_instances.append({'box3D':box3D, 'shapenet_catid': catid_cad, 'shapenet_id': id_cad, 'vtk_object':vtk_object})
+        shapenet_instances.append(
+            {'box3D': box3D, 'shapenet_catid': catid_cad, 'shapenet_id': id_cad, 'vtk_object': vtk_object})
 
     scene = Vis_Scan2CAD(gt_dirname=gt_dirname, shapenet_instances=shapenet_instances)
     scene.visualize()
