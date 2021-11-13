@@ -187,12 +187,12 @@ class IFNet(nn.Module):
         return loss, voxels_out
 
     def get_z_from_prior(self, size=torch.Size([]), device='cuda', sample=False):
-        ''' Returns z from prior distribution.
+        """ Returns z from prior distribution.
 
         Args:
             size (Size): size of z
             sample (bool): whether to sample
-        '''
+        """
         p0_z = self.get_prior_z(self.z_dim, device)
         if sample:
             z = p0_z.sample(size)
@@ -214,31 +214,31 @@ class IFNet(nn.Module):
         return p_r
 
     def infer_z(self, p, occ, c, device, **kwargs):
-        '''
+        """
         Infers latent code z.
         :param p : points tensor
         :param occ: occupancy values for occ
         :param c: latent conditioned code c
         :param kwargs:
         :return:
-        '''
+        """
         if self.encoder_latent is not None:
-            mean_z, logstd_z = self.encoder_latent(p, occ, c, **kwargs)
+            mean_z, softstd_z = self.encoder_latent(p, occ, c, **kwargs)
         else:
             batch_size = p.size(0)
             mean_z = torch.empty(batch_size, 0).to(device)
-            logstd_z = torch.empty(batch_size, 0).to(device)
+            softstd_z = torch.empty(batch_size, 0).to(device)
 
-        q_z = dist.Normal(mean_z, torch.exp(logstd_z))
+        q_z = dist.Normal(mean_z, softstd_z)
         return q_z
 
     def get_prior_z(self, z_dim, device):
-        ''' Returns prior distribution for latent code z.
+        """ Returns prior distribution for latent code z.
 
         Args:
             zdim: dimension of latent code z.
             device (device): pytorch device
-        '''
+        """
         p0_z = dist.Normal(
             torch.zeros(z_dim, device=device),
             torch.ones(z_dim, device=device)

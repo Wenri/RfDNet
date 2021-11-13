@@ -10,7 +10,7 @@ def maxpool(x, dim=-1, keepdim=False):
 
 
 class Encoder_Latent(nn.Module):
-    ''' Latent encoder class.
+    """ Latent encoder class.
 
     It encodes the input points and returns mean and standard deviation for the
     posterior Gaussian distribution.
@@ -20,7 +20,8 @@ class Encoder_Latent(nn.Module):
         c_dim (int): dimension of latent conditioned code c
         dim (int): input dimension
         leaky (bool): whether to use leaky ReLUs
-    '''
+    """
+
     def __init__(self, z_dim=128, c_dim=128, dim=3, leaky=False):
         super().__init__()
         self.z_dim = z_dim
@@ -38,6 +39,7 @@ class Encoder_Latent(nn.Module):
         self.fc_3 = nn.Linear(256, 128)
         self.fc_mean = nn.Linear(128, z_dim)
         self.fc_logstd = nn.Linear(128, z_dim)
+        self.softplus = torch.nn.Softplus()
 
         if not leaky:
             self.actvn = F.relu
@@ -68,6 +70,6 @@ class Encoder_Latent(nn.Module):
         net = self.pool(net, dim=1)
 
         mean = self.fc_mean(net)
-        logstd = self.fc_logstd(net)
+        softstd = self.softplus(self.fc_logstd(net))
 
-        return mean, logstd
+        return mean, softstd

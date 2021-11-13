@@ -5,8 +5,8 @@ weight: []
 seed: 10
 device:
   use_gpu: True
-  gpu_ids: '0,1'
-  num_workers: 8
+  gpu_ids: '0'
+  num_workers: 16
 data:
   dataset: scannet
   split: datasets/splits/fullscan
@@ -64,7 +64,7 @@ train:
   epochs: 240
   phase: 'detection'
   freeze: []
-  batch_size: 8
+  batch_size: 32
 val:
   phase: 'detection'
   batch_size: 8
