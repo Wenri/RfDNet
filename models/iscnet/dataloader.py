@@ -182,9 +182,11 @@ class ISCNet_ScanNet(ABNormalDataset):
     def get_shapenet_points(self, scene_name, shapenet_catids, shapenet_ids, transform=None):
         """Load points and corresponding occ values."""
         shape_data_list = []
+        b_aligned = True
         for idx, (shapenet_catid, shapenet_id) in enumerate(zip(shapenet_catids, shapenet_ids)):
             points_dict = self.get_scannet_abnormal(scene_name, idx, shapenet_catid, shapenet_id)
             if points_dict is None:
+                b_aligned = False
                 points_dict = np.load(os.path.join(self.shapenet_path, 'point', shapenet_catid, shapenet_id + '.npz'))
                 points = points_dict['points']
                 occupancies = points_dict['occupancies']
@@ -206,7 +208,7 @@ class ISCNet_ScanNet(ABNormalDataset):
                 points = points.astype(np.float32)
 
             occupancies = occupancies.astype(np.float32)
-            data = {'points': points, 'occ': occupancies}
+            data = {'points': points, 'occ': occupancies, 'aligned': b_aligned}
             if transform is not None:
                 data = transform(data)
             shape_data_list.append(data)
@@ -224,13 +226,16 @@ class ISCNet_ScanNet(ABNormalDataset):
 
         object_points = np.zeros((MAX_NUM_OBJ, np.sum(self.n_points_object), 3))
         object_points_occ = np.zeros((MAX_NUM_OBJ, np.sum(self.n_points_object)))
+        object_points_aligned = np.zeros((MAX_NUM_OBJ, 1), dtype=np.bool_)
         points_data = self.get_shapenet_points(scene_name, shapenet_catids, shapenet_ids,
                                                transform=self.points_transform)
         object_points[0:n_ins] = points_data['points']
         object_points_occ[0:n_ins] = points_data['occ']
+        object_points_aligned[0:n_ins] = points_data['aligned']
 
         ret_dict['object_points'] = object_points.astype(np.float32)
         ret_dict['object_points_occ'] = object_points_occ.astype(np.float32)
+        ret_dict['object_points_aligned'] = object_points_aligned.astype(np.float32)
 
         '''Get Voxels for Visualization'''
         voxels_data = self.get_shapenet_voxels(shapenet_catids, shapenet_ids)
@@ -244,11 +249,14 @@ class ISCNet_ScanNet(ABNormalDataset):
             n_iou_points = points_iou_data['occ'].shape[-1]
             object_points_iou = np.zeros((MAX_NUM_OBJ, n_iou_points, 3))
             object_points_iou_occ = np.zeros((MAX_NUM_OBJ, n_iou_points))
+            object_points_iou_aligned = np.zeros((MAX_NUM_OBJ, 1), dtype=np.bool_)
             object_points_iou[0:n_ins] = points_iou_data['points']
             object_points_iou_occ[0:n_ins] = points_iou_data['occ']
+            object_points_iou_aligned[0:n_ins] = points_data['aligned']
 
             ret_dict['object_points_iou'] = object_points_iou.astype(np.float32)
             ret_dict['object_points_iou_occ'] = object_points_iou_occ.astype(np.float32)
+            ret_dict['object_points_iou_aligned'] = object_points_iou_aligned.astype(np.float32)
             ret_dict['shapenet_catids'] = shapenet_catids
             ret_dict['shapenet_ids'] = shapenet_ids
 

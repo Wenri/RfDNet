@@ -2,17 +2,19 @@
 # author: ynie
 # date: Feb, 2020
 
-from models.registers import METHODS, MODULES, LOSSES
-from models.network import BaseNetwork
-import torch
-from net_utils.nn_distance import nn_distance
 import numpy as np
-from net_utils.ap_helper import parse_predictions, parse_groundtruths, assembly_pred_map_cls, assembly_gt_map_cls
-from external.common import compute_iou
-from net_utils.libs import flip_axis_to_depth, extract_pc_in_box3d, flip_axis_to_camera, flip_axis_to_depth_cuda
+import torch
 from torch import optim
+
+from external.common import compute_iou
+from models.iscnet.dataloader import write_pointcloud
 from models.loss import chamfer_func
+from models.network import BaseNetwork
+from models.registers import METHODS, MODULES, LOSSES
+from net_utils.ap_helper import parse_predictions, parse_groundtruths, assembly_pred_map_cls, assembly_gt_map_cls
 from net_utils.box_util import get_3d_box
+from net_utils.libs import flip_axis_to_depth, extract_pc_in_box3d, flip_axis_to_camera
+from net_utils.nn_distance import nn_distance
 from net_utils.voxel_util import voxels_from_proposals
 
 
@@ -492,15 +494,36 @@ class ISCNet(BaseNetwork):
 
         cls_codes_for_completion = torch.cat(cls_codes_for_completion, dim=0)
 
-        surface_points = input_points_occ_for_completion.unsqueeze(-1) * input_points_for_completion
-        max_dim, min_dim = torch.max(surface_points, dim=1).values, torch.min(surface_points, dim=1).values
-        center = (max_dim + min_dim) / 2
-        scale = max_dim - min_dim
-        input_points_for_completion = (input_points_for_completion - center.unsqueeze(1)) / scale.unsqueeze(1)
+        if False:
+            surface_points = input_points_occ_for_completion.unsqueeze(-1) * input_points_for_completion
+            max_dim, min_dim = torch.max(surface_points, dim=1).values, torch.min(surface_points, dim=1).values
+            center = (max_dim + min_dim) / 2
+            scale = max_dim - min_dim
+            input_points_for_completion = (input_points_for_completion - center.unsqueeze(1)) / scale.unsqueeze(1)
 
-        voxels = voxels_from_proposals(self.cfg, end_points, data, BATCH_PROPOSAL_IDs)
-
+        voxels, partial_pc = voxels_from_proposals(self.cfg, end_points, data, BATCH_PROPOSAL_IDs)
+        object_ids = BATCH_PROPOSAL_IDs[:, :, 1]
+        self.tmp_vis(partial_pc, input_points_for_completion, input_points_occ_for_completion,
+                     object_ids, data['object_points_aligned'])
         return input_points_for_completion, input_points_occ_for_completion, cls_codes_for_completion, voxels
+
+    def tmp_vis(self, partial_pts, pts, occ, object_ids, valid):
+        n_batch, n_ins = object_ids.shape
+        partial_pts = partial_pts.view(n_batch, n_ins, -1, 3)
+        pts = pts.view(n_batch, n_ins, -1, 3)
+        occ = occ.view(n_batch, n_ins, -1)
+
+        for ppc, p, occ, oid, mask in zip(partial_pts, pts, occ, object_ids, valid):
+            for ppc1, p1, occ1, oid1 in zip(ppc, p, occ, oid):
+                if mask[oid1].item() < 1:
+                    continue
+                ppc1mask = torch.all(ppc1 > -.5, dim=-1)
+                ppc1mask &= torch.all(ppc1 < .5, dim=-1)
+                write_pointcloud(f'/workspace/Debug/train_ppc1.ply', ppc1[ppc1mask].cpu().numpy())
+                write_pointcloud(f'/workspace/Debug/train_occ1.ply', p1[occ1 > 0].cpu().numpy())
+
+                continue
+        return None
 
     def loss(self, est_data, gt_data):
         '''

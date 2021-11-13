@@ -1,7 +1,7 @@
 import numpy as np
 import torch
-
 from torch.nn import functional as F
+
 from net_utils.box_util import get_3d_box_cuda
 from net_utils.libs import flip_axis_to_camera_cuda, flip_axis_to_depth_cuda
 
@@ -103,11 +103,11 @@ def voxels_from_proposals(cfg, end_points, data, BATCH_PROPOSAL_IDs):
     # world to obj
     point_clouds = data['point_clouds'][..., 0:3].unsqueeze(1).expand(-1, N_proposals, -1, -1)
     point_clouds = torch.matmul(point_clouds - pred_centers.unsqueeze(2), axis_rectified.transpose(2, 3))
+    point_clouds /= box_size.unsqueeze(2)
+    point_clouds = torch.matmul(point_clouds, transform_shapenet).view(batch_size * N_proposals, -1, 3)
+    all_voxels = pointcloud2voxel_fast(point_clouds)
 
-    pcd_cuda = torch.matmul(point_clouds / box_size.unsqueeze(2), transform_shapenet)
-    all_voxels = pointcloud2voxel_fast(pcd_cuda.view(batch_size * N_proposals, -1, 3))
-
-    return all_voxels
+    return all_voxels, point_clouds
 
 
 def pc2voxel_test():
