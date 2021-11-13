@@ -8,7 +8,7 @@ from multiprocessing import Pool
 
 
 def parse_args():
-    '''PARAMETERS'''
+    """PARAMETERS"""
     parser = argparse.ArgumentParser('Instance Scene Completion.')
     parser.add_argument('--config', type=str, default='configs/config_files/ISCNet.yaml',
                         help='configure file for training or testing.')
@@ -29,12 +29,12 @@ if __name__ == '__main__':
 
     initiate_environment(cfg.config)
 
-    '''Configuration'''
+    # Configuration
     cfg.log_string('Loading configurations.')
     cfg.log_string(cfg.config)
     cfg.write_config()
 
-    '''Run'''
+    # Run
     if cfg.config['mode'] == 'train':
         import train
 

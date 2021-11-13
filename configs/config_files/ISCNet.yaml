@@ -1,11 +1,11 @@
 method: ISCNet
 resume: False
 finetune: True
-weight: ['out/iscnet/2021-06-24T20:50:43.374020/model_best.pth']
+weight: ['out/iscnet/2021-06-30T12:02:22.224806/model_best.pth']
 seed: 10
 device:
   use_gpu: True
-  gpu_ids: '0,1'
+  gpu_ids: '0'
   num_workers: 8
 data:
   dataset: scannet
@@ -64,10 +64,10 @@ train:
   epochs: 240
   phase: 'completion'
   freeze: []
-  batch_size: 16
+  batch_size: 5
 val:
   phase: 'completion'
-  batch_size: 16
+  batch_size: 5
   use_cls_nms: True
   use_3d_nms: True
   ap_iou_thresholds: [0.25, 0.5]
