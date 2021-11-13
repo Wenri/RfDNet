@@ -10,6 +10,8 @@ from torch.utils.data import Dataset
 
 from utils.read_and_write import read_json
 
+roty = np.array([[0., 0., -1.], [0., 1., 0.], [1., 0., 0.]])
+
 
 class ScanNet(Dataset):
     def __init__(self, cfg, mode):
@@ -97,4 +99,4 @@ class ABNormalDataset(ScanNet):
         pts_mask = np.zeros(self.OCCN, dtype=np.bool_)
         pts_mask[:n_in] = True
 
-        return pts[indices], pts_mask[indices]
+        return pts[indices] @ roty, pts_mask[indices]

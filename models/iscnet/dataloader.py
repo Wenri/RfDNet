@@ -5,6 +5,7 @@
 
 import os
 import pickle
+import struct
 from pathlib import Path
 
 import numpy as np
@@ -191,6 +192,12 @@ class ISCNet_ScanNet(ABNormalDataset):
                     occupancies = np.unpackbits(occupancies)[:points.shape[0]]
             else:
                 points, occupancies = points_dict
+                points_dict = np.load(os.path.join(self.shapenet_path, 'point', shapenet_catid, shapenet_id + '.npz'))
+                points_ref = points_dict['points']
+                occupancies_ref = points_dict['occupancies']
+                if self.points_unpackbits:
+                    occupancies_ref = np.unpackbits(occupancies_ref)[:points.shape[0]]
+                self.tmp_vis(idx, points[occupancies], points_ref[occupancies_ref > 0])
             # Break symmetry if given in float16:
             if points.dtype == np.float16 and self.mode == 'train':
                 points = points.astype(np.float32)
@@ -205,6 +212,11 @@ class ISCNet_ScanNet(ABNormalDataset):
             shape_data_list.append(data)
 
         return recursive_cat_to_numpy(shape_data_list)
+
+    def tmp_vis(self, name, pts1, pts2):
+        write_pointcloud(f'/workspace/Debug/{name}_pts1.ply', pts1)
+        write_pointcloud(f'/workspace/Debug/{name}_pts2.ply', pts2)
+        return None
 
     def get_completion_occ(self, scene_name, shapenet_catids, shapenet_ids):
         n_ins = len(shapenet_ids)
@@ -294,3 +306,36 @@ def ISCNet_dataloader(cfg, mode='train'):
                             collate_fn=collate_fn,
                             worker_init_fn=my_worker_init_fn)
     return dataloader
+
+
+def write_pointcloud(filename, xyz_points, rgb_points=None):
+    """ creates a .ply file of the point clouds generated
+    """
+
+    n_total, n_dim = xyz_points.shape
+    assert n_dim == 3, 'Input XYZ points should be Nx3 float array'
+    if rgb_points is None:
+        rgb_points = np.asarray((255, 0, 0), dtype=np.uint8)
+    if rgb_points.ndim < 2:
+        rgb_points = np.broadcast_to(np.expand_dims(rgb_points, axis=0), shape=(n_total, 3))
+    assert xyz_points.shape == rgb_points.shape, 'Input RGB colors should be Nx3 float array and have same size as ' \
+                                                 'input XYZ points '
+
+    # Write header of .ply file
+    with open(filename, 'wb') as fid:
+        fid.write(bytes('ply\n', 'utf-8'))
+        fid.write(bytes('format binary_little_endian 1.0\n', 'utf-8'))
+        fid.write(bytes('element vertex %d\n' % xyz_points.shape[0], 'utf-8'))
+        fid.write(bytes('property float x\n', 'utf-8'))
+        fid.write(bytes('property float y\n', 'utf-8'))
+        fid.write(bytes('property float z\n', 'utf-8'))
+        fid.write(bytes('property uchar red\n', 'utf-8'))
+        fid.write(bytes('property uchar green\n', 'utf-8'))
+        fid.write(bytes('property uchar blue\n', 'utf-8'))
+        fid.write(bytes('end_header\n', 'utf-8'))
+
+        # Write 3D points to .ply file
+        for i in range(xyz_points.shape[0]):
+            fid.write(bytearray(struct.pack("fffccc", xyz_points[i, 0], xyz_points[i, 1], xyz_points[i, 2],
+                                            rgb_points[i, 0].tostring(), rgb_points[i, 1].tostring(),
+                                            rgb_points[i, 2].tostring())))
