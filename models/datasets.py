@@ -42,30 +42,31 @@ class ABNormalDataset(ScanNet):
         for d in self.data_dir.glob('*/gen/scan_*/*_output.npz'):
             ins_id, shapenet_id = d.name.split('_')[:2]
             scene_str = mapname[d.parent.name.split('_')[1]]
-            assert (int(ins_id), shapenet_id[:8]) in mapdict[scene_str]
-            self.npz_maps[scene_str][int(ins_id)] = (shapenet_id, d)
+            overscan = mapdict[scene_str][(int(ins_id), shapenet_id[:8])]
+            self.npz_maps[scene_str][int(ins_id)] = (shapenet_id, d, float(overscan))
 
         self.rand = np.random.default_rng()
         self.OCCN = 100000
 
     def get_maptabel(self):
         maptab = self.data_dir / 'maptable.txt'
-        mapdict = defaultdict(set)
+        mapdict = defaultdict(dict)
         mapname = dict()
         with maptab.open('r') as f:
             for line in f:
                 line = line.strip()
                 if line:
-                    scan_str, scene_str, _ = line.split(':')
+                    scan_str, scene_str, _, overscan_str = line.split(':')
                     scan_id, ins_id, shapenet_id = scan_str.split('_')
                     scan_id = scan_id[4:]
                     scene_str = '_'.join(scene_str.split('_')[:2])
                     scene_str_chk = mapname.get(scan_id)
+                    overscan_str = overscan_str.split('_')[1].strip()
                     if scene_str_chk is None:
                         mapname[scan_id] = scene_str
                     else:
                         assert scene_str_chk == scene_str
-                    mapdict[scene_str].add((int(ins_id), shapenet_id))
+                    mapdict[scene_str][(int(ins_id), shapenet_id)] = overscan_str
         return mapname, mapdict
 
     def subsample(self, points, N):
@@ -82,7 +83,8 @@ class ABNormalDataset(ScanNet):
         if path is None:
             return None
         assert path[0] == shapenet_id
-        return self.loadnpz(path[1])
+        p, occ = self.loadnpz(path[1])
+        return p * path[2], occ
 
     def loadnpz(self, npz_file):
         npz_file = np.load(npz_file)
