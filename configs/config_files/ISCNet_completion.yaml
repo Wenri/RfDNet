@@ -1,7 +1,7 @@
 method: ISCNet
 resume: False
 finetune: True
-weight: ['out/iscnet/pre_train_ISCNet_detection/model_best.pth']
+weight: ['out/iscnet/2021-03-28T15:52:57.350715/model_best.pth']
 seed: 10
 device:
   use_gpu: True
@@ -42,7 +42,7 @@ model:
     method: SkipPropagation
     loss: Null
   completion:
-    method: IFNet
+    method: ONet
     loss: ONet_Loss
     weight: 1
 optimizer:
@@ -64,10 +64,10 @@ train:
   epochs: 240
   phase: 'completion'
   freeze: ['backbone', 'voting', 'detection']
-  batch_size: 18
+  batch_size: 8
 val:
   phase: 'completion'
-  batch_size: 18
+  batch_size: 8
   use_cls_nms: True
   use_3d_nms: True
   ap_iou_thresholds: [0.25, 0.5]
