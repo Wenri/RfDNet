@@ -1,12 +1,14 @@
 # Occupancy Networks
 import torch
-import torch.nn as nn
-from models.registers import MODULES
 import torch.distributions as dist
+import torch.nn as nn
+from torch.nn import functional as F
+
+from external.common import make_3d_grid
 from models.iscnet.modules.encoder_latent import Encoder_Latent
 from models.iscnet.modules.occ_decoder import DecoderCBatchNorm
-from torch.nn import functional as F
-from external.common import make_3d_grid
+from models.registers import MODULES
+
 
 @MODULES.register_module
 class ONet(nn.Module):
@@ -19,6 +21,7 @@ class ONet(nn.Module):
         p0_z (dist): prior distribution for latent code z
         device (device): torch device
     '''
+
     def __init__(self, cfg, optim_spec=None):
         super(ONet, self).__init__()
         '''Optimizer parameters used in training'''
@@ -31,7 +34,7 @@ class ONet(nn.Module):
         dim = 3
         self.use_cls_for_completion = cfg.config['data']['use_cls_for_completion']
         if not cfg.config['data']['skip_propagate']:
-            c_dim = self.use_cls_for_completion*cfg.dataset_config.num_class + 128
+            c_dim = self.use_cls_for_completion * cfg.dataset_config.num_class + 128
         else:
             c_dim = self.use_cls_for_completion * cfg.dataset_config.num_class + cfg.config['data']['c_dim']
         self.threshold = cfg.config['data']['threshold']
@@ -54,10 +57,10 @@ class ONet(nn.Module):
                                          sample=cfg.config['generation']['use_sampling'],
                                          refinement_step=cfg.config['generation']['refinement_step'],
                                          simplify_nfaces=cfg.config['generation']['simplify_nfaces'],
-                                         preprocessor = None)
+                                         preprocessor=None)
 
     def compute_loss(self, input_features_for_completion, input_points_for_completion, input_points_occ_for_completion,
-                     cls_codes_for_completion, export_shape=False):
+                     cls_codes_for_completion, voxel_grids, export_shape=False):
         '''
         Compute loss for OccNet
         :param input_features_for_completion (N_B x D): Number of bounding boxes x Dimension of proposal feature.
@@ -76,7 +79,8 @@ class ONet(nn.Module):
         kwargs = {}
         '''Infer latent code z.'''
         if self.z_dim > 0:
-            q_z = self.infer_z(input_points_for_completion, input_points_occ_for_completion, input_features_for_completion, device, **kwargs)
+            q_z = self.infer_z(input_points_for_completion, input_points_occ_for_completion,
+                               input_features_for_completion, device, **kwargs)
             z = q_z.rsample()
             # KL-divergence
             p0_z = self.get_prior_z(self.z_dim, device)
@@ -95,7 +99,7 @@ class ONet(nn.Module):
         '''Export Shape Voxels.'''
         if export_shape:
             shape = (16, 16, 16)
-            p = make_3d_grid([-0.5 + 1/32] * 3, [0.5 - 1/32] * 3, shape).to(device)
+            p = make_3d_grid([-0.5 + 1 / 32] * 3, [0.5 - 1 / 32] * 3, shape).to(device)
             p = p.expand(batch_size, *p.size())
             z = self.get_z_from_prior((batch_size,), device, sample=False)
             kwargs = {}
@@ -108,7 +112,8 @@ class ONet(nn.Module):
 
         return loss, voxels_out
 
-    def forward(self, input_points_for_completion, input_features_for_completion, cls_codes_for_completion, sample=False, **kwargs):
+    def forward(self, input_points_for_completion, input_features_for_completion, cls_codes_for_completion,
+                sample=False, **kwargs):
         '''
         Performs a forward pass through the network.
         :param input_points_for_completion (tensor): sampled points
