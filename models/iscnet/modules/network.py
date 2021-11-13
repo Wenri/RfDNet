@@ -213,7 +213,7 @@ class ISCNet(BaseNetwork):
 
         index_list = []
         box_params_list = []
-        max_obj_points = 12000
+        max_obj_points = 13000
         max_pc_in_box = 50000
         obj_points_list = []
         obj_points_mask_list = []
