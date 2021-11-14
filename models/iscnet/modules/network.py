@@ -494,13 +494,6 @@ class ISCNet(BaseNetwork):
 
         cls_codes_for_completion = torch.cat(cls_codes_for_completion, dim=0)
 
-        if False:
-            surface_points = input_points_occ_for_completion.unsqueeze(-1) * input_points_for_completion
-            max_dim, min_dim = torch.max(surface_points, dim=1).values, torch.min(surface_points, dim=1).values
-            center = (max_dim + min_dim) / 2
-            scale = max_dim - min_dim
-            input_points_for_completion = (input_points_for_completion - center.unsqueeze(1)) / scale.unsqueeze(1)
-
         voxels, partial_pc = voxels_from_proposals(self.cfg, end_points, data, BATCH_PROPOSAL_IDs)
         object_ids = BATCH_PROPOSAL_IDs[:, :, 1]
         self.tmp_vis(partial_pc, input_points_for_completion, input_points_occ_for_completion,

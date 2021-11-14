@@ -84,7 +84,7 @@ class ABNormalDataset(ScanNet):
             return None
         assert path[0] == shapenet_id
         p, occ = self.loadnpz(path[1])
-        return p * path[2], occ
+        return p, occ, path[2]
 
     def loadnpz(self, npz_file):
         npz_file = np.load(npz_file)

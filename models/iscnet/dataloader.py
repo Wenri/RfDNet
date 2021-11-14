@@ -179,27 +179,32 @@ class ISCNet_ScanNet(ABNormalDataset):
             shape_data_list.append(voxels[np.newaxis])
         return np.concatenate(shape_data_list, axis=0)
 
+    def load_shapenet_npz(self, shapenet_catid, shapenet_id):
+        points_dict = np.load(os.path.join(self.shapenet_path, 'point', shapenet_catid, shapenet_id + '.npz'))
+        points = points_dict['points']
+        occupancies = points_dict['occupancies']
+        if self.points_unpackbits:
+            occupancies = np.unpackbits(occupancies)[:points.shape[0]]
+        occupancies = occupancies.astype(np.bool_)
+        surface_points = points[occupancies]
+        max_dim, min_dim = np.max(surface_points, axis=0), np.min(surface_points, axis=0)
+        points -= (max_dim + min_dim) / 2
+        points /= max_dim - min_dim
+        return points, occupancies
+
     def get_shapenet_points(self, scene_name, shapenet_catids, shapenet_ids, transform=None):
         """Load points and corresponding occ values."""
         shape_data_list = []
-        b_aligned = True
         for idx, (shapenet_catid, shapenet_id) in enumerate(zip(shapenet_catids, shapenet_ids)):
             points_dict = self.get_scannet_abnormal(scene_name, idx, shapenet_catid, shapenet_id)
             if points_dict is None:
-                b_aligned = False
-                points_dict = np.load(os.path.join(self.shapenet_path, 'point', shapenet_catid, shapenet_id + '.npz'))
-                points = points_dict['points']
-                occupancies = points_dict['occupancies']
-                if self.points_unpackbits:
-                    occupancies = np.unpackbits(occupancies)[:points.shape[0]]
+                b_aligned = 0.0
+                points, occupancies = self.load_shapenet_npz(shapenet_catid, shapenet_id)
             else:
-                points, occupancies = points_dict
-                points_dict = np.load(os.path.join(self.shapenet_path, 'point', shapenet_catid, shapenet_id + '.npz'))
-                points_ref = points_dict['points']
-                occupancies_ref = points_dict['occupancies']
-                if self.points_unpackbits:
-                    occupancies_ref = np.unpackbits(occupancies_ref)[:points.shape[0]]
-                self.tmp_vis(idx, points[occupancies], points_ref[occupancies_ref > 0])
+                points, occupancies, b_aligned = points_dict
+                points_ref, occupancies_ref = self.load_shapenet_npz(shapenet_catid, shapenet_id)
+                self.tmp_vis(f'{idx}_{shapenet_catid}_{shapenet_id[:8]}',
+                             points[occupancies], points_ref[occupancies_ref > 0])
             # Break symmetry if given in float16:
             if points.dtype == np.float16 and self.mode == 'train':
                 points = points.astype(np.float32)
@@ -226,7 +231,7 @@ class ISCNet_ScanNet(ABNormalDataset):
 
         object_points = np.zeros((MAX_NUM_OBJ, np.sum(self.n_points_object), 3))
         object_points_occ = np.zeros((MAX_NUM_OBJ, np.sum(self.n_points_object)))
-        object_points_aligned = np.zeros((MAX_NUM_OBJ, 1), dtype=np.bool_)
+        object_points_aligned = np.zeros((MAX_NUM_OBJ, 1))
         points_data = self.get_shapenet_points(scene_name, shapenet_catids, shapenet_ids,
                                                transform=self.points_transform)
         object_points[0:n_ins] = points_data['points']
