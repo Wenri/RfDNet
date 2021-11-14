@@ -1,8 +1,7 @@
 method: ISCNet
 resume: False
 finetune: True
-#weight: ['out/pretrained_models/pretrained_weight.pth']
-weight: ['out/iscnet/2021-07-02T07:00:24.481384/model_last.pth']
+weight: ['out/iscnet/iscnet_IFNET/model_best.pth']
 seed: 10
 device:
   use_gpu: True
