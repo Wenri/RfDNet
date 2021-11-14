@@ -202,9 +202,9 @@ class ISCNet_ScanNet(ABNormalDataset):
                 points, occupancies = self.load_shapenet_npz(shapenet_catid, shapenet_id)
             else:
                 points, occupancies, b_aligned = points_dict
-                points_ref, occupancies_ref = self.load_shapenet_npz(shapenet_catid, shapenet_id)
-                self.tmp_vis(f'{idx}_{shapenet_catid}_{shapenet_id[:8]}',
-                             points[occupancies], points_ref[occupancies_ref > 0])
+                # points_ref, occupancies_ref = self.load_shapenet_npz(shapenet_catid, shapenet_id)
+                # self.tmp_vis(f'{idx}_{shapenet_catid}_{shapenet_id[:8]}',
+                #              points[occupancies], points_ref[occupancies_ref > 0])
             # Break symmetry if given in float16:
             if points.dtype == np.float16 and self.mode == 'train':
                 points = points.astype(np.float32)

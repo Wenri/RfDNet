@@ -495,9 +495,8 @@ class ISCNet(BaseNetwork):
         cls_codes_for_completion = torch.cat(cls_codes_for_completion, dim=0)
 
         voxels, partial_pc = voxels_from_proposals(self.cfg, end_points, data, BATCH_PROPOSAL_IDs)
-        object_ids = BATCH_PROPOSAL_IDs[:, :, 1]
-        self.tmp_vis(partial_pc, input_points_for_completion, input_points_occ_for_completion,
-                     object_ids, data['object_points_aligned'])
+        # self.tmp_vis(partial_pc, input_points_for_completion, input_points_occ_for_completion,
+        #              BATCH_PROPOSAL_IDs[:, :, 1], data['object_points_aligned'])
         return input_points_for_completion, input_points_occ_for_completion, cls_codes_for_completion, voxels
 
     def tmp_vis(self, partial_pts, pts, occ, object_ids, valid):
@@ -519,9 +518,9 @@ class ISCNet(BaseNetwork):
         return None
 
     def loss(self, est_data, gt_data):
-        '''
+        """
         calculate loss of est_out given gt_out.
-        '''
+        """
         end_points, completion_loss = est_data[:2]
         total_loss = self.detection_loss(end_points, gt_data, self.cfg.dataset_config)
 
