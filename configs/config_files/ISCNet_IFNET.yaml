@@ -1,8 +1,7 @@
 method: ISCNet
 resume: False
 finetune: True
-weight: ['out/pretrained_models/pretrained_weight.pth']
-#weight: ['out/iscnet/train_ISCNet_completion_IFNET/model_best.pth']
+weight: ['out/iscnet/train_ISCNet_completion_IFNET/model_best.pth']
 seed: 10
 device:
   use_gpu: True
