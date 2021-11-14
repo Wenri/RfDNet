@@ -8,13 +8,13 @@ from net_utils.ap_helper import APCalculator
 import numpy as np
 
 def test_func(cfg, tester, test_loader):
-    '''
+    """
     test function.
     :param cfg: configuration file
     :param tester: specific tester for networks
     :param test_loader: dataloader for testing
     :return:
-    '''
+    """
     mode = cfg.config['mode']
     batch_size = cfg.config[mode]['batch_size']
     loss_recorder = LossRecorder(batch_size)
@@ -24,15 +24,16 @@ def test_func(cfg, tester, test_loader):
     ap_calculator_list = [APCalculator(iou_thresh, cfg.dataset_config.class2type, evaluate_mesh_mAP) for iou_thresh in
                           AP_IOU_THRESHOLDS]
     cfg.log_string('-'*100)
+    total_cds = {}
     for iter, data in enumerate(test_loader):
         loss, est_data = tester.test_step(data)
         eval_dict = est_data[4]
         for ap_calculator in ap_calculator_list:
             ap_calculator.step(eval_dict['batch_pred_map_cls'], eval_dict['batch_gt_map_cls'])
         # visualize intermediate results.
-        if cfg.config['generation']['dump_results']:
-            tester.visualize_step(mode, iter, data, est_data, eval_dict)
-
+        # if cfg.config['generation']['dump_results']:
+        #     tester.visualize_step(mode, iter, data, est_data, eval_dict)
+        total_cds.update(est_data[8])
         loss_recorder.update_loss(loss)
 
         if ((iter + 1) % cfg.config['log']['print_step']) == 0:
