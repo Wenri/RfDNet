@@ -1,11 +1,13 @@
 # Testing functions.
 # author: ynie
 # date: April, 2020
-from net_utils.utils import LossRecorder
 from time import time
-import torch
-from net_utils.ap_helper import APCalculator
+
 import numpy as np
+
+from net_utils.ap_helper import APCalculator
+from net_utils.utils import LossRecorder
+
 
 def test_func(cfg, tester, test_loader):
     """
@@ -23,7 +25,7 @@ def test_func(cfg, tester, test_loader):
         'generate_mesh'] and cfg.config[mode]['evaluate_mesh_mAP'] else False
     ap_calculator_list = [APCalculator(iou_thresh, cfg.dataset_config.class2type, evaluate_mesh_mAP) for iou_thresh in
                           AP_IOU_THRESHOLDS]
-    cfg.log_string('-'*100)
+    cfg.log_string('-' * 100)
     total_cds = {}
     for iter, data in enumerate(test_loader):
         loss, est_data = tester.test_step(data)
@@ -38,9 +40,18 @@ def test_func(cfg, tester, test_loader):
 
         if ((iter + 1) % cfg.config['log']['print_step']) == 0:
             cfg.log_string('Process: Phase: %s. Epoch %d: %d/%d. Current loss: %s.' % (
-            mode, 0, iter + 1, len(test_loader), str({key: np.mean(item) for key, item in loss.items()})))
+                mode, 0, iter + 1, len(test_loader), str({key: np.mean(item) for key, item in loss.items()})))
 
+    total_n = 0
+    total_cd = 0
+    for x in total_cds.values():
+        total_n += len(x)
+        total_cd += sum(x.values())
+
+    cd_value = total_cd / total_n
+    print(f'{cd_value=}')
     return loss_recorder.loss_recorder, ap_calculator_list
+
 
 def test(cfg, tester, test_loader):
     '''
@@ -56,14 +67,14 @@ def test(cfg, tester, test_loader):
     tester.net.train(mode == 'train')
     start = time()
     test_loss_recoder, ap_calculator_list = test_func(cfg, tester, test_loader)
-    cfg.log_string('Test time elapsed: (%f).' % (time()-start))
+    cfg.log_string('Test time elapsed: (%f).' % (time() - start))
     for key, test_loss in test_loss_recoder.items():
         cfg.log_string('Test loss (%s): %f' % (key, test_loss.avg))
 
     # Evaluate average precision
     AP_IOU_THRESHOLDS = cfg.config[mode]['ap_iou_thresholds']
     for i, ap_calculator in enumerate(ap_calculator_list):
-        cfg.log_string(('-'*10 + 'iou_thresh: %f' + '-'*10) % (AP_IOU_THRESHOLDS[i]))
+        cfg.log_string(('-' * 10 + 'iou_thresh: %f' + '-' * 10) % (AP_IOU_THRESHOLDS[i]))
         metrics_dict = ap_calculator.compute_metrics()
         for key in metrics_dict:
             cfg.log_string('eval %s: %f' % (key, metrics_dict[key]))

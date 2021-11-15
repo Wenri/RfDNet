@@ -34,6 +34,14 @@ class ISCNet(BaseNetwork):
             '03001627', '03632729', '20000027', '20000016', '03002210', '04331277', '03376595', '02738535',
             '04576002', '20000025', '20000026', '20000024', '20000020', '20000021', '20000023', '03260849',
             '20000018', '20000022', '20000019', '20000015', '03649674', '03002711', '04373704', '04099969'}
+        self.cat_set = {  # table_cat
+            '04381587', '20000037', '03090000', '03063968', '03238586', '04379243', '04603729', '20000038',
+            '03092883', '20000041', '04301000', '03620967', '02874214', '03116530', '03179701', '03850492',
+            '02699629', '02964075', '03246933', '02964196', '20000040', '04398951', '02894337', '03982430',
+            '20000036', '03904060', '20000039'}
+        self.cat_set = {  # cabinet_cat
+            '20000009', '03237340', '03742115', '20000012', '03018349', '20000011', '20000008', '20000010',
+            '20000013', '02933112'}
         phase_names = []
         if cfg.config[cfg.config['mode']]['phase'] in ['detection']:
             phase_names += ['backbone', 'voting', 'detection']
@@ -195,8 +203,8 @@ class ISCNet(BaseNetwork):
             pred_mesh_dict = {'meshes': meshes, 'proposal_ids': BATCH_PROPOSAL_IDs}
             cdvalue = self.check_mesh_to_scan(pred_mesh_dict, parsed_predictions, eval_dict,
                                               data, dump_threshold)
-            parsed_predictions = self.fit_mesh_to_scan(pred_mesh_dict, parsed_predictions, eval_dict,
-                                                       inputs['point_clouds'], dump_threshold)
+            # parsed_predictions = self.fit_mesh_to_scan(pred_mesh_dict, parsed_predictions, eval_dict,
+            #                                            inputs['point_clouds'], dump_threshold)
 
         pred_mesh_dict = pred_mesh_dict if self.cfg.config[mode]['evaluate_mesh_mAP'] else None
         eval_dict = assembly_pred_map_cls(eval_dict, parsed_predictions, self.cfg.eval_config,
@@ -304,6 +312,7 @@ class ISCNet(BaseNetwork):
                 pc_in_box, inds = extract_pc_in_box3d(scene_scan, larger_box)
                 if len(pc_in_box) < 5:
                     continue
+                pc_in_box = pc_in_box[:max_pc_in_box]
 
                 pc_in_box_matrix = np.zeros((max_pc_in_box, 3))
                 pc_in_box_mask = np.zeros((max_pc_in_box,), dtype=np.uint8)
