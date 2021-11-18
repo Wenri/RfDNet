@@ -5,6 +5,8 @@ from torch.nn import functional as F
 from net_utils.box_util import get_3d_box_cuda
 from net_utils.libs import flip_axis_to_camera_cuda, flip_axis_to_depth_cuda
 
+transform_shapenet = torch.tensor([[0., 0., -1.], [-1., 0., 0.], [0., 1., 0.]])
+
 
 @torch.jit.script
 def pointcloud2voxel_fast(pc: torch.Tensor, voxel_size: int = 32, grid_size: float = 1.):
@@ -108,6 +110,41 @@ def voxels_from_proposals(cfg, end_points, data, BATCH_PROPOSAL_IDs):
     all_voxels = pointcloud2voxel_fast(point_clouds)
 
     return all_voxels, point_clouds
+
+
+def voxels_from_scannet(ins_pc, box_centers, box_sizes, axis_rectified, overscan_max=1.5):
+    point_clouds = torch.matmul(ins_pc - box_centers, axis_rectified.T)
+    point_clouds = torch.matmul(point_clouds / box_sizes, transform_shapenet.to(point_clouds.device)).unsqueeze(0)
+    overscan = 2 * torch.max(torch.abs(point_clouds))
+    overscan = torch.maximum(torch.minimum(overscan, torch.as_tensor(overscan_max)), torch.as_tensor(1))
+    all_voxels = pointcloud2voxel_fast(point_clouds / overscan)
+
+    return all_voxels, point_clouds, overscan
+
+
+def get_bbox(dataset_config, center_label, heading_class_label, heading_residual_label,
+             size_class_label, size_residual_label, **kwargs):
+    centers_upright_camera = flip_axis_to_camera_cuda(center_label)
+    heading_angles = dataset_config.class2angle_cuda(heading_class_label, heading_residual_label)
+
+    # gather proposal box size
+    box_size = dataset_config.class2size_cuda(size_class_label, size_residual_label)
+
+    corners_3d_upright_camera = get_3d_box_cuda(box_size, -heading_angles, centers_upright_camera)
+
+    kwargs['boxes3d'] = flip_axis_to_depth_cuda(corners_3d_upright_camera)
+    kwargs['box_centers'] = center_label
+    kwargs['box_sizes'] = box_size
+    kwargs['heading_angles'] = heading_angles
+
+    cos_orientation, sin_orientation = torch.cos(heading_angles), torch.sin(heading_angles)
+    zero_orientation, one_orientation = torch.zeros_like(heading_angles), torch.ones_like(heading_angles)
+    axis_rectified = torch.stack([torch.stack([cos_orientation, -sin_orientation, zero_orientation], dim=-1),
+                                  torch.stack([sin_orientation, cos_orientation, zero_orientation], dim=-1),
+                                  torch.stack([zero_orientation, zero_orientation, one_orientation], dim=-1)], dim=-1)
+    kwargs['axis_rectified'] = axis_rectified
+
+    return kwargs
 
 
 def pc2voxel_test():

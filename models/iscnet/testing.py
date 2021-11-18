@@ -51,9 +51,9 @@ class Tester(BaseTester, Trainer):
         return eval_metrics
 
     def test_step(self, data):
-        '''
+        """
         test by epoch
-        '''
+        """
         '''load input and ground-truth data'''
         data = self.to_device(data)
 

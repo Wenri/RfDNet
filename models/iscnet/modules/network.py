@@ -1,10 +1,13 @@
 # ISCNet: model loader
 # author: ynie
 # date: Feb, 2020
+from types import SimpleNamespace
 
 import numpy as np
 import torch
+from pytorch3d.ops import knn_points
 from torch import optim
+from trimesh.sample import sample_surface_even
 
 from external.common import compute_iou
 from models.iscnet.dataloader import write_pointcloud
@@ -15,11 +18,24 @@ from net_utils.ap_helper import parse_predictions, parse_groundtruths, assembly_
 from net_utils.box_util import get_3d_box
 from net_utils.libs import flip_axis_to_depth, extract_pc_in_box3d, flip_axis_to_camera
 from net_utils.nn_distance import nn_distance
-from net_utils.voxel_util import voxels_from_proposals
+from net_utils.voxel_util import voxels_from_proposals, get_bbox, voxels_from_scannet
 
 
 @METHODS.register_module
 class ISCNet(BaseNetwork):
+    # cat_set = {  # chair cat
+    #     '03001627', '03632729', '20000027', '20000016', '03002210', '04331277', '03376595', '02738535',
+    #     '04576002', '20000025', '20000026', '20000024', '20000020', '20000021', '20000023', '03260849',
+    #     '20000018', '20000022', '20000019', '20000015', '03649674', '03002711', '04373704', '04099969'}
+    # cat_set |= {  # table_cat
+    #     '04381587', '20000037', '03090000', '03063968', '03238586', '04379243', '04603729', '20000038',
+    #     '03092883', '20000041', '04301000', '03620967', '02874214', '03116530', '03179701', '03850492',
+    #     '02699629', '02964075', '03246933', '02964196', '20000040', '04398951', '02894337', '03982430',
+    #     '20000036', '03904060', '20000039'}
+    cat_set = {  # cabinet_cat
+        '20000009', '03237340', '03742115', '20000012', '03018349', '20000011', '20000008', '20000010',
+        '20000013', '02933112'}
+
     def __init__(self, cfg):
         '''
         load submodules for the network.
@@ -27,7 +43,6 @@ class ISCNet(BaseNetwork):
         '''
         super(BaseNetwork, self).__init__()
         self.cfg = cfg
-
         phase_names = []
         if cfg.config[cfg.config['mode']]['phase'] in ['detection']:
             phase_names += ['backbone', 'voting', 'detection']
@@ -184,10 +199,13 @@ class ISCNet(BaseNetwork):
 
         '''fit mesh points to scans'''
         pred_mesh_dict = None
+        cdvalue = None
         if self.cfg.config[mode]['phase'] == 'completion' and self.cfg.config['generation']['generate_mesh']:
             pred_mesh_dict = {'meshes': meshes, 'proposal_ids': BATCH_PROPOSAL_IDs}
-            parsed_predictions = self.fit_mesh_to_scan(pred_mesh_dict, parsed_predictions, eval_dict,
-                                                       inputs['point_clouds'], dump_threshold)
+            cdvalue = self.check_mesh_to_scan(pred_mesh_dict, parsed_predictions, eval_dict,
+                                              data, dump_threshold)
+            # parsed_predictions = self.fit_mesh_to_scan(pred_mesh_dict, parsed_predictions, eval_dict,
+            #                                            inputs['point_clouds'], dump_threshold)
 
         pred_mesh_dict = pred_mesh_dict if self.cfg.config[mode]['evaluate_mesh_mAP'] else None
         eval_dict = assembly_pred_map_cls(eval_dict, parsed_predictions, self.cfg.eval_config,
@@ -200,7 +218,46 @@ class ISCNet(BaseNetwork):
 
         completion_loss = torch.cat([completion_loss.unsqueeze(0), mask_loss.unsqueeze(0)], dim=0)
         return end_points, completion_loss.unsqueeze(
-            0), shape_example, BATCH_PROPOSAL_IDs, eval_dict, meshes, iou_stats, parsed_predictions
+            0), shape_example, BATCH_PROPOSAL_IDs, eval_dict, meshes, iou_stats, parsed_predictions, cdvalue
+
+    def check_mesh_to_scan(self, pred_mesh_dict, parsed_predictions, eval_dict, data, dump_threshold):
+        pred_mask = eval_dict['pred_mask']
+        obj_prob = parsed_predictions['obj_prob']
+        bsize, N_proposals = pred_mask.shape
+        scan_cds = {}
+        for i in range(bsize):
+            c = SimpleNamespace(**{
+                k: v[i] for k, v in get_bbox(self.cfg.eval_config['dataset_config'], **data).items()})
+            best_cd = {}
+            for j in range(N_proposals):
+                if not (pred_mask[i, j] == 1 and obj_prob[i, j] > dump_threshold):
+                    continue
+                # get index
+                idx = pred_mesh_dict['proposal_ids'][i, :, 0].tolist().index(j)
+                oid = pred_mesh_dict['proposal_ids'][i, idx, 1].item()
+
+                if self.cat_set is not None and c.shapenet_catids[oid] not in self.cat_set:
+                    continue
+
+                # get mesh points
+                mesh_data = pred_mesh_dict['meshes'][idx]
+
+                # get scan points
+                ins_id = c.object_instance_labels[oid]
+                ins_pc = c.point_clouds[c.point_instance_labels == ins_id, :3].cuda()
+
+                voxels, ins_pc, overscan = voxels_from_scannet(ins_pc, c.box_centers[oid].cuda(),
+                                                               c.box_sizes[oid].cuda(),
+                                                               c.axis_rectified[oid].cuda())
+
+                old_cd = best_cd.get(oid)
+                new_cd = self.compute_cd(ins_pc[0] / overscan, mesh_data)
+                if old_cd is None or new_cd < old_cd:
+                    best_cd[oid] = new_cd
+            if len(best_cd):
+                scan_cds[data['scan_idx'].item()] = best_cd
+
+        return scan_cds
 
     def fit_mesh_to_scan(self, pred_mesh_dict, parsed_predictions, eval_dict, input_scan, dump_threshold):
         '''fit meshes to input scan'''
@@ -256,6 +313,7 @@ class ISCNet(BaseNetwork):
                 pc_in_box, inds = extract_pc_in_box3d(scene_scan, larger_box)
                 if len(pc_in_box) < 5:
                     continue
+                pc_in_box = pc_in_box[:max_pc_in_box]
 
                 pc_in_box_matrix = np.zeros((max_pc_in_box, 3))
                 pc_in_box_mask = np.zeros((max_pc_in_box,), dtype=np.uint8)
@@ -520,6 +578,15 @@ class ISCNet(BaseNetwork):
 
                 continue
         return None
+
+    def compute_cd(self, partial_pts, mesh):
+        write_pointcloud(f'/workspace/Debug/eval_ppc1.ply', partial_pts.cpu().numpy())
+        mesh.export(f'/workspace/Debug/eval_mesh.ply')
+        sample_pts, _ = sample_surface_even(mesh, count=10000)
+        write_pointcloud(f'/workspace/Debug/eval_samp.ply', sample_pts)
+        sample_pts = torch.from_numpy(sample_pts).to(device=partial_pts.device, dtype=partial_pts.dtype)
+        x_nn = knn_points(partial_pts.unsqueeze(0), sample_pts.unsqueeze(0), K=1, return_sorted=False).dists
+        return x_nn.mean().item()
 
     def loss(self, est_data, gt_data):
         """
