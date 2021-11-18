@@ -142,7 +142,7 @@ class ISCNet(BaseNetwork):
                 # proposal_to_gt_box_w_cls_list (B x N_Limit x 4): (bool_mask, proposal_id, gt_box_id, cls_id)
                 input_points_for_completion, \
                 input_points_occ_for_completion, \
-                _, voxels = self.prepare_data(end_points, data, BATCH_PROPOSAL_IDs)
+                _, voxels, _ = self.prepare_data(end_points, data, BATCH_PROPOSAL_IDs)
 
                 batch_size, feat_dim, N_proposals = object_input_features.size()
                 object_input_features = object_input_features.transpose(1, 2).contiguous().view(
@@ -394,8 +394,9 @@ class ISCNet(BaseNetwork):
             # Prepare input-output pairs for shape completion
             # proposal_to_gt_box_w_cls_list (B x N_Limit x 4): (bool_mask, proposal_id, gt_box_id, cls_id)
             input_points_for_completion, input_points_occ_for_completion, \
-            cls_codes_for_completion, voxels = self.prepare_data(end_points, data, BATCH_PROPOSAL_IDs)
-
+            cls_codes_for_completion, voxels, weight = self.prepare_data(end_points, data, BATCH_PROPOSAL_IDs)
+            weight = (weight > 0).float() + 0.5
+            weight /= torch.sum(weight) / weight.shape[0]
             export_shape = data.get('export_shape', export_shape)  # if output shape voxels.
             batch_size, feat_dim, N_proposals = object_input_features.size()
             object_input_features = object_input_features.transpose(1, 2).contiguous().view(
@@ -404,7 +405,7 @@ class ISCNet(BaseNetwork):
                                                                           input_points_for_completion,
                                                                           input_points_occ_for_completion,
                                                                           cls_codes_for_completion, voxels,
-                                                                          export_shape)
+                                                                          export_shape, weight=weight)
         else:
             BATCH_PROPOSAL_IDs = None
             completion_loss = torch.tensor(0.).to(features.device)
@@ -484,6 +485,9 @@ class ISCNet(BaseNetwork):
         input_points_occ_for_completion = torch.gather(data['object_points_occ'], 1, occ_ids)
         input_points_occ_for_completion = input_points_occ_for_completion.view(batch_size * N_proposals, n_points)
 
+        weight = torch.gather(data['object_points_aligned'], 1, BATCH_PROPOSAL_IDs[:, :, 1].unsqueeze(-1))
+        weight = weight.view(batch_size * N_proposals, 1)
+
         cls_codes_for_completion = []
         for batch_id in range(batch_size):
             # class encoding
@@ -497,7 +501,7 @@ class ISCNet(BaseNetwork):
         voxels, partial_pc = voxels_from_proposals(self.cfg, end_points, data, BATCH_PROPOSAL_IDs)
         # self.tmp_vis(partial_pc, input_points_for_completion, input_points_occ_for_completion,
         #              BATCH_PROPOSAL_IDs[:, :, 1], data['object_points_aligned'])
-        return input_points_for_completion, input_points_occ_for_completion, cls_codes_for_completion, voxels
+        return input_points_for_completion, input_points_occ_for_completion, cls_codes_for_completion, voxels, weight
 
     def tmp_vis(self, partial_pts, pts, occ, object_ids, valid):
         n_batch, n_ins = object_ids.shape

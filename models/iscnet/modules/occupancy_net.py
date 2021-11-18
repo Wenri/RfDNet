@@ -60,7 +60,7 @@ class ONet(nn.Module):
                                          preprocessor=None)
 
     def compute_loss(self, input_features_for_completion, input_points_for_completion, input_points_occ_for_completion,
-                     cls_codes_for_completion, voxel_grids, export_shape=False):
+                     cls_codes_for_completion, voxel_grids, export_shape=False, weight=None):
         '''
         Compute loss for OccNet
         :param input_features_for_completion (N_B x D): Number of bounding boxes x Dimension of proposal feature.
@@ -93,7 +93,7 @@ class ONet(nn.Module):
         '''Decode to occupancy voxels.'''
         logits = self.decode(input_points_for_completion, z, input_features_for_completion, **kwargs).logits
         loss_i = F.binary_cross_entropy_with_logits(
-            logits, input_points_occ_for_completion, reduction='none')
+            logits, input_points_occ_for_completion, reduction='none', weight=weight)
         loss = loss + loss_i.sum(-1).mean()
 
         '''Export Shape Voxels.'''

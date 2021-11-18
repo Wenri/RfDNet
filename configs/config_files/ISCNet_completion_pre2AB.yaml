@@ -1,7 +1,7 @@
 method: ISCNet
 resume: False
 finetune: True
-weight: ['out/iscnet/pre-abw2/model_last.pth']
+weight: ['out/pretrained_models/pretrained_weight.pth']
 seed: 10
 device:
   use_gpu: True
@@ -45,10 +45,10 @@ model:
   completion:
     method: ONet
     loss: ONet_Loss
-    weight: 0.005
+    weight: 1
 optimizer:
   method: Adam
-  lr: 5e-5
+  lr: 1e-4
   betas: [0.9, 0.999]
   eps: 1e-08
   weight_decay: 0
@@ -64,7 +64,7 @@ bnscheduler:
 train:
   epochs: 240
   phase: 'completion'
-  freeze: []
+  freeze: ['backbone', 'voting', 'detection']
   batch_size: 8
 val:
   phase: 'completion'

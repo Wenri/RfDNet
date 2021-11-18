@@ -2,7 +2,7 @@ method: ISCNet
 resume: False
 finetune: True
 weight: ['out/pretrained_models/pretrained_weight.pth']
-# weight: ['out/iscnet/iscnet/model_best.pth']
+# weight: ['out/iscnet/ISCNet_ABW/model_last.pth']
 seed: 10
 device:
   use_gpu: True

@@ -36,14 +36,17 @@ class ABNormalDataset(ScanNet):
 
     def __init__(self, cfg, mode):
         super(ABNormalDataset, self).__init__(cfg, mode)
-        self.data_dir = Path(cfg.config['data']['abnormal_path'])
+        data_dir = cfg.config['data'].get('abnormal_path')
         self.npz_maps = defaultdict(dict)
-        mapname, mapdict = self.get_maptabel()
-        for d in self.data_dir.glob('*/gen/scan_*/*_output.npz'):
-            ins_id, shapenet_id = d.name.split('_')[:2]
-            scene_str = mapname[d.parent.name.split('_')[1]]
-            overscan = mapdict[scene_str][(int(ins_id), shapenet_id[:8])]
-            self.npz_maps[scene_str][int(ins_id)] = (shapenet_id, d, float(overscan))
+        self.data_dir = None
+        if data_dir is not None:
+            self.data_dir = Path(data_dir)
+            mapname, mapdict = self.get_maptabel()
+            for d in self.data_dir.glob('*/gen/scan_*/*_output.npz'):
+                ins_id, shapenet_id = d.name.split('_')[:2]
+                scene_str = mapname[d.parent.name.split('_')[1]]
+                overscan = mapdict[scene_str][(int(ins_id), shapenet_id[:8])]
+                self.npz_maps[scene_str][int(ins_id)] = (shapenet_id, d, float(overscan))
 
         self.rand = np.random.default_rng()
         self.OCCN = 100000
@@ -78,6 +81,7 @@ class ABNormalDataset(ScanNet):
         return points[indices]
 
     def get_scannet_abnormal(self, scene_name, idx, shapenet_catid, shapenet_id):
+        # return None
         scene_dict = self.npz_maps[scene_name]
         path = scene_dict.get(int(idx))
         if path is None:

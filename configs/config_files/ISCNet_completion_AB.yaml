@@ -1,11 +1,11 @@
 method: ISCNet
 resume: False
 finetune: True
-weight: ['out/iscnet/pre_train_ISCNet_detection/model_best.pth']
+weight: ['out/iscnet/iscnet/model_best.pth']
 seed: 10
 device:
   use_gpu: True
-  gpu_ids: '0'
+  gpu_ids: '1'
   num_workers: 8
 data:
   dataset: scannet
@@ -19,7 +19,7 @@ data:
   use_color_detection: False
   use_color_completion: False
   shapenet_path: datasets/ShapeNetv2_data
-  abnormal_path: datasets/anno1
+  abnormal_path: datasets/combined_anno
   points_unpackbits: True
   points_subsample: [1024, 1024]
   hidden_dim: 512
