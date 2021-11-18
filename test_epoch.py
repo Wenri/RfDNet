@@ -80,8 +80,8 @@ def test_func(cfg, tester, test_loader):
     cfg.log_string('-' * 100)
     total_cds = {}
     for iter, data in enumerate(test_loader):
-        # if iter < 560:
-        #     continue
+        if iter < 560:
+            continue
         loss, est_data = tester.test_step(data)
         export_mesh(cfg, est_data, data)
         eval_dict = est_data[4]
