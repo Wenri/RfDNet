@@ -1,18 +1,22 @@
 # Testing functions.
 # author: ynie
 # date: April, 2020
+from pathlib import Path
 from time import time
 from types import SimpleNamespace
 
 import numpy as np
+import torch
 
+from models.iscnet.dataloader import write_pointcloud
 from models.iscnet.modules import ISCNet
 from net_utils.ap_helper import APCalculator
 from net_utils.utils import LossRecorder
-from net_utils.voxel_util import get_bbox, voxels_from_scannet
+from net_utils.voxel_util import get_bbox, voxels_from_scannet, voxels_from_proposals
 
 
 def export_mesh(cfg, est_data, data, dump_threshold=0.5):
+    end_points = est_data[0]
     BATCH_PROPOSAL_IDs = est_data[3]
     eval_dict = est_data[4]
     meshes = est_data[5]
@@ -23,6 +27,7 @@ def export_mesh(cfg, est_data, data, dump_threshold=0.5):
     for i in range(bsize):
         c = SimpleNamespace(**{
             k: v[i] for k, v in get_bbox(cfg.eval_config['dataset_config'], **data).items()})
+        expath = Path(f'/workspace/Export/{c.scan_idx.item()}')
         for j in range(N_proposals):
             if not (pred_mask[i, j] == 1 and obj_prob[i, j] > dump_threshold):
                 continue
@@ -43,9 +48,16 @@ def export_mesh(cfg, est_data, data, dump_threshold=0.5):
             voxels, ins_pc, overscan = voxels_from_scannet(ins_pc, c.box_centers[oid].cuda(),
                                                            c.box_sizes[oid].cuda(),
                                                            c.axis_rectified[oid].cuda())
+            voxels, partial_pc = voxels_from_proposals(cfg, end_points, data, BATCH_PROPOSAL_IDs)
 
-            scan_idx = c.scan_idx.item()
-            mesh_data.export(f'/workspace/Export/{scan_idx}_{oid}_{idx}_mesh.ply')
+            partial_pc = partial_pc[idx] / overscan
+            partial_mask = torch.all(partial_pc < 0.5, dim=-1)
+            partial_mask &= torch.all(partial_pc > -0.5, dim=-1)
+            partial_pc = partial_pc[partial_mask]
+
+            expath.mkdir(exist_ok=True)
+            mesh_data.export(expath / f'{oid}_{idx}_mesh.ply')
+            write_pointcloud(expath / f'{oid}_{idx}_partial_pc.ply', partial_pc.cpu().numpy())
     return
 
 
@@ -68,6 +80,8 @@ def test_func(cfg, tester, test_loader):
     cfg.log_string('-' * 100)
     total_cds = {}
     for iter, data in enumerate(test_loader):
+        # if iter < 560:
+        #     continue
         loss, est_data = tester.test_step(data)
         export_mesh(cfg, est_data, data)
         eval_dict = est_data[4]

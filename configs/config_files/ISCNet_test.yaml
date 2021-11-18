@@ -1,8 +1,6 @@
 method: ISCNet
 resume: False
 finetune: True
-#weight: ['out/pretrained_models/pretrained_weight.pth']
-#weight: ['out/iscnet/cmp/pre-ab.pth']
 weight: ['out/iscnet/cmp/model_last.pth']
 seed: 10
 device:
