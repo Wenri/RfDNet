@@ -23,7 +23,7 @@ class ScanNet(Dataset):
         self.config = cfg.config
         self.dataset_config = cfg.dataset_config
         self.mode = mode
-        mode = 'train'
+        # mode = 'train'
         split_file = os.path.join(cfg.config['data']['split'], 'scannetv2_' + mode + '.json')
         self.split = read_json(split_file)
 
