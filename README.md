@@ -37,7 +37,7 @@ From an incomplete point cloud of a 3D scene (left), our method learns to jointl
 ---
 
 ### Demo
-The pretrained model can be downloaded [here](https://livebournemouthac-my.sharepoint.com/:u:/g/personal/ynie_bournemouth_ac_uk/EcHBlVk4nfpEiXrEiBYkpEoBJJO1rjTioCNXRynTKmvHgQ?e=Z53UM7). Put the pretrained model in the directory as below
+The pretrained model can be downloaded [here](https://tumde-my.sharepoint.com/:u:/g/personal/yinyu_nie_tum_de/EegvrRsKIj9BsArsJl0BUREB2Yx_I34hwTp9l7UcJMFFoQ?e=ewDT7u). Put the pretrained model in the directory as below
 
 ```
 out/pretrained_models/pretrained_weight.pth
@@ -63,7 +63,7 @@ In our paper, we use the input point cloud from the [ScanNet](http://www.scan-ne
 Scan2CAD aligns the object CAD models from [ShapeNetCore.v2](https://shapenet.org/) to each object in ScanNet, and we use these aligned CAD models as the ground-truth.
 
 ##### Preprocess ScanNet and Scan2CAD data
-You can either directly download the processed samples [[link](https://livebournemouthac-my.sharepoint.com/:u:/g/personal/ynie_bournemouth_ac_uk/EZjNNhRxcnBGlGo18ASb-xUBDP1gxkRGI5uO1foLl8v8Kg?e=yVXbfN )] to the directory below (recommended)
+You can either directly download the processed samples [[link](https://tumde-my.sharepoint.com/:u:/g/personal/yinyu_nie_tum_de/EdTtS1JDX35DoZHj11Y5Vb8Bw89ollS_-pxiPGPjqvqZyA?e=dH93ab)] to the directory below (recommended)
 ```
 datasets/scannet/processed_data/
 ```
@@ -84,7 +84,7 @@ or <br>
    ```
 
 ##### Preprocess ShapeNet data
-You can either directly download the processed data [[link](https://livebournemouthac-my.sharepoint.com/:f:/g/personal/ynie_bournemouth_ac_uk/EtFYCJNn1IdInSg2_QbVU1UB6BYW1sGI5y4D5u8eeaZffQ?e=CHqAyG )] and extract them to `datasets/ShapeNetv2_data/` as below
+You can either directly download the processed data [[link](https://tumde-my.sharepoint.com/:u:/g/personal/yinyu_nie_tum_de/EQfn3F28ie9LlM6qq66QuXcBFe4HjCsBZGJtm9eLw9XrhQ?e=lFwzN1)] and extract them to `datasets/ShapeNetv2_data/` as below
 ```
 datasets/ShapeNetv2_data/point
 datasets/ShapeNetv2_data/pointcloud
@@ -99,10 +99,18 @@ or <br>
     datasets/ShapeNetCore.v2
    ```
    
-2. Process ShapeNet models into watertight meshes by
+2. Process ShapeNet models into watertight meshes by the following.
    
     ```
     python utils/shapenet/1_fuse_shapenetv2.py
+   ```
+   
+   If it does not work, please delete the `./build` and `.so` file in `external/librender/` and recompile the pyrender by
+   
+    ```
+    cd RfDNet/external/librender
+    rm -rf ./build ./*.so
+    python setup.py build_ext --inplace
    ```
    
 3. Sample points on ShapeNet models for training (similar to [Occupancy Networks](https://github.com/autonomousvision/occupancy_networks)).
@@ -227,11 +235,13 @@ You can choose each of the following ways for evaluation.
 ### Citation
 If you find our work helpful, please consider citing
 ```
-@inproceedings{Nie_2021_CVPR,
-    title={RfD-Net: Point Scene Understanding by Semantic Instance Reconstruction},
-    author={Nie, Yinyu and Hou, Ji and Han, Xiaoguang and Nie{\ss}ner, Matthias},
-    booktitle={Proc. Computer Vision and Pattern Recognition (CVPR), IEEE},
-    year={2021}
+@InProceedings{Nie_2021_CVPR,
+    author    = {Nie, Yinyu and Hou, Ji and Han, Xiaoguang and Niessner, Matthias},
+    title     = {RfD-Net: Point Scene Understanding by Semantic Instance Reconstruction},
+    booktitle = {Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)},
+    month     = {June},
+    year      = {2021},
+    pages     = {4608-4618}
 }
 
 ```
